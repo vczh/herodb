@@ -71,11 +71,21 @@ TEST_CASE_SOURCE(LockUnlockPage)
 
 TEST_CASE_SOURCE(AllocateFreePage)
 {
+	auto indexPage = bm.GetIndexPage(source);
+	TEST_ASSERT(indexPage.IsValid());
+
 	auto page1 = bm.AllocatePage(source);
 	TEST_ASSERT(page1.IsValid());
+	TEST_ASSERT(page1.index != indexPage.index);
 	auto page2 = bm.AllocatePage(source);
 	TEST_ASSERT(page2.IsValid());
-	TEST_ASSERT(page1.index != page2.index);
+	TEST_ASSERT(page2.index != page1.index);
+	TEST_ASSERT(page2.index != indexPage.index);
+
+	auto addr0 = bm.LockPage(source, indexPage);
+	TEST_ASSERT(addr0 != nullptr);
+	TEST_ASSERT(bm.UnlockPage(source, indexPage, addr0, false)== true);
+	TEST_ASSERT(bm.FreePage(source, indexPage) == false);
 
 	auto addr1 = bm.LockPage(source, page1);
 	TEST_ASSERT(addr1 != nullptr);

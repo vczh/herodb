@@ -23,6 +23,7 @@ InMemoryBufferSource
 			SpinLock			lock;
 			PageList			pages;
 			PageIdList			freePages;
+			BufferPage			indexPage;
 
 		public:
 			InMemoryBufferSource(BufferSource _source, volatile vuint64_t* _totalUsedPages, vuint64_t _pageSize)
@@ -30,6 +31,7 @@ InMemoryBufferSource
 				,totalUsedPages(_totalUsedPages)
 				,pageSize(_pageSize)
 			{
+				indexPage = AllocatePage();
 			}
 
 			void Unload()override
@@ -113,6 +115,11 @@ InMemoryBufferSource
 				return true;
 			}
 
+			BufferPage GetIndexPage()override
+			{
+				return indexPage;
+			}
+
 			BufferPage AllocatePage()override
 			{
 				BufferPage page = BufferPage::Invalid();
@@ -138,6 +145,10 @@ InMemoryBufferSource
 
 			bool FreePage(BufferPage page)override
 			{
+				if (page.index == indexPage.index)
+				{
+					return false;
+				}
 				return UnmapPage(page);
 			}
 

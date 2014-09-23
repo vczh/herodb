@@ -19,6 +19,7 @@
 #define INDEX_INVALID (~(vuint64_t)0)
 #define INDEX_PAGE_INITIAL 0
 #define INDEX_PAGE_USEMASK 1
+#define INDEX_PAGE_INDEX 2
 
 #define INDEX_INITIAL_NEXTINITIALPAGE 0
 #define INDEX_INITIAL_FREEPAGEITEMS 1
@@ -57,6 +58,7 @@ FileBufferSource
 
 			vuint64_t				initialPageItemCount;
 			vuint64_t				useMaskPageItemCount;
+			BufferPage				indexPage;
 
 		public:
 
@@ -71,6 +73,7 @@ FileBufferSource
 				,activeInitialPageIndex(-1)
 				,totalPageCount(0)
 			{
+				indexPage.index = INDEX_PAGE_INDEX;
 			}
 
 			void Unload()override
@@ -306,6 +309,11 @@ FileBufferSource
 				}
 			}
 
+			BufferPage GetIndexPage()override
+			{
+				return indexPage;
+			}
+
 			BufferPage AllocatePage()override
 			{
 				BufferPage page = PopFreePage();
@@ -322,6 +330,14 @@ FileBufferSource
 
 			bool FreePage(BufferPage page)override
 			{
+				switch(page.index)
+				{
+					case INDEX_PAGE_INITIAL:
+					case INDEX_PAGE_USEMASK:
+					case INDEX_PAGE_INDEX:
+						return false;
+				}
+
 				if (!GetUseMask(page)) return false;
 				vint index = mappedPages.Keys().IndexOf(page.index);
 				if (index != -1)
@@ -372,10 +388,46 @@ FileBufferSource
 				return true;
 			}	
 
+			void FillUnmapPageCandidates(collections::List<BufferPageTimeTuple>& pages, vint expectCount)override
+			{
+				vint mappedCount = mappedPages.Count();
+				if (mappedCount == 0) return;
+
+				Array<BufferPageTimeTuple> tuples(mappedCount);
+				vint usedCount = 0;
+				for (vint i = 0; i < mappedCount; i++)
+				{
+					auto key = mappedPages.Keys()[i];
+					auto value = mappedPages.Values()[i];
+					if (!value->locked)
+					{
+						BufferPage page{key};
+						tuples[usedCount++] = BufferPageTimeTuple(source, page, value->lastAccessTime);
+					}
+				}
+
+				if (tuples.Count() > 0)
+				{
+					SortLambda(&tuples[0], usedCount, [](const BufferPageTimeTuple& t1, const BufferPageTimeTuple& t2)
+					{
+						if (t1.f2 < t2.f2) return -1;
+						else if (t1.f2 > t2.f2) return 1;
+						else return 0;
+					});
+
+					vint copyCount = usedCount < expectCount ? usedCount : expectCount;
+					for (vint i = 0; i < copyCount; i++)
+					{
+						pages.Add(tuples[i]);
+					}
+				}
+			}
+
 			void InitializeEmptySource()
 			{
 				initialPages.Clear();
 				useMaskPages.Clear();
+
 				{
 					BufferPage page{INDEX_PAGE_INITIAL};
 					auto pageDesc = MapPage(page);
@@ -386,7 +438,7 @@ FileBufferSource
 					msync(numbers, pageSize, MS_SYNC);
 					initialPages.Add(page.index);
 					activeInitialPageIndex = 0;
-					totalPageCount = 2;
+					totalPageCount = 3;
 				}
 				{
 					BufferPage page{INDEX_PAGE_USEMASK};
@@ -398,11 +450,20 @@ FileBufferSource
 					useMaskPages.Add(page.index);
 				}
 				{
+					BufferPage page{INDEX_PAGE_INDEX};
+					MapPage(page);
+				}
+
+				{
 					BufferPage page{INDEX_PAGE_INITIAL};
 					SetUseMask(page, true);
 				}
 				{
 					BufferPage page{INDEX_PAGE_USEMASK};
+					SetUseMask(page, true);
+				}
+				{
+					BufferPage page{INDEX_PAGE_INDEX};
 					SetUseMask(page, true);
 				}
 			}
@@ -446,41 +507,6 @@ FileBufferSource
 						auto pageDesc = MapPage(page);
 						vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 						page.index = numbers[INDEX_USEMASK_NEXTUSEMASKPAGE];
-					}
-				}
-			}
-
-			void FillUnmapPageCandidates(collections::List<BufferPageTimeTuple>& pages, vint expectCount)override
-			{
-				vint mappedCount = mappedPages.Count();
-				if (mappedCount == 0) return;
-
-				Array<BufferPageTimeTuple> tuples(mappedCount);
-				vint usedCount = 0;
-				for (vint i = 0; i < mappedCount; i++)
-				{
-					auto key = mappedPages.Keys()[i];
-					auto value = mappedPages.Values()[i];
-					if (!value->locked)
-					{
-						BufferPage page{key};
-						tuples[usedCount++] = BufferPageTimeTuple(source, page, value->lastAccessTime);
-					}
-				}
-
-				if (tuples.Count() > 0)
-				{
-					SortLambda(&tuples[0], usedCount, [](const BufferPageTimeTuple& t1, const BufferPageTimeTuple& t2)
-					{
-						if (t1.f2 < t2.f2) return -1;
-						else if (t1.f2 > t2.f2) return 1;
-						else return 0;
-					});
-
-					vint copyCount = usedCount < expectCount ? usedCount : expectCount;
-					for (vint i = 0; i < copyCount; i++)
-					{
-						pages.Add(tuples[i]);
 					}
 				}
 			}

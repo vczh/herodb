@@ -206,6 +206,19 @@ BufferManager
 			return successful;
 		}
 
+		BufferPage BufferManager::GetIndexPage(BufferSource source)
+		{
+			TRY_GET_BUFFER_SOURCE(bs, source, BufferPage::Invalid());
+
+			BufferPage page;
+			SPIN_LOCK(bs->GetLock())
+			{
+				page = bs->GetIndexPage();
+			}
+			SwapCacheIfNecessary();
+			return page;
+		}
+
 		BufferPage BufferManager::AllocatePage(BufferSource source)
 		{
 			TRY_GET_BUFFER_SOURCE(bs, source, BufferPage::Invalid());

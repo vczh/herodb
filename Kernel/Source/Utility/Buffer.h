@@ -24,6 +24,7 @@ namespace vl
 			virtual SpinLock&		GetLock() = 0;
 			virtual WString			GetFileName() = 0;
 			virtual bool			UnmapPage(BufferPage page) = 0;
+			virtual BufferPage		GetIndexPage() = 0;
 			virtual BufferPage		AllocatePage() = 0;
 			virtual bool			FreePage(BufferPage page) = 0;
 			virtual void*			LockPage(BufferPage page) = 0;
@@ -69,6 +70,7 @@ namespace vl
 
 			void*				LockPage(BufferSource source, BufferPage page);
 			bool				UnlockPage(BufferSource source, BufferPage page, void* buffer, bool persist);
+			BufferPage			GetIndexPage(BufferSource source);
 			BufferPage			AllocatePage(BufferSource source);
 			bool				FreePage(BufferSource source, BufferPage page);
 			bool				EncodePointer(BufferPointer& pointer, BufferPage page, vuint64_t offset);
