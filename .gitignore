@@ -1,0 +1,12 @@
+*.sdf
+*.suo
+*.opensdf
+**/Debug/**
+**/Release/**
+*.test.txt
+~$*.docx
+~*.tmp
+*.o
+**/Obj/**
+**/Bin/**
+*~
