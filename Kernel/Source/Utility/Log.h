@@ -43,8 +43,23 @@ namespace vl
 
 		class LogManager : public Object
 		{
+			typedef collections::Dictionary<BufferTransaction::IndexType, Ptr<LogTransDesc>>		TransMap;
+			typedef collections::List<BufferPage>													PageList;
+
+		private:
+			BufferManager*				bm;
+			BufferSource				source;
+			bool						autoUnload;
+
+			SpinLock					lock;
+			vuint64_t					pageSize;
+			vuint64_t					indexPageItemCount;
+			volatile vuint64_t			usedTransactionCount;
+			PageList					indexPages;
+			TransMap					activeTransactions;
+
 		public:
-			LogManager(BufferManager* _bm, BufferSource _source);
+			LogManager(BufferManager* _bm, BufferSource _source, bool _createNew, bool _autoUnload = true);
 			~LogManager();
 
 			vuint64_t					GetUsedTransactionCount();
