@@ -57,7 +57,10 @@ namespace vl
 			volatile vuint64_t			usedTransactionCount;
 			PageList					indexPages;
 			TransMap					activeTransactions;
+			BufferPointer				nextBlockAddress;
 
+			bool						WriteAddressItem(BufferTransaction transaction, BufferPointer address);
+			bool						AllocateBlock(vuint64_t minSize, vuint64_t& size, BufferPointer& address);
 		public:
 			LogManager(BufferManager* _bm, BufferSource _source, bool _createNew, bool _autoUnload = true);
 			~LogManager();

@@ -25,8 +25,93 @@ namespace vl
 	namespace database
 	{
 /***********************************************************************
-FileBufferSource
+LogManager
 ***********************************************************************/
+
+		bool LogManager::WriteAddressItem(BufferTransaction transaction, BufferPointer address)
+		{
+			if (transaction.index >= usedTransactionCount)
+			{
+				return false;
+			}
+
+			vuint64_t index = transaction.index / indexPageItemCount;
+			vuint64_t item = transaction.index % indexPageItemCount;
+			if (index > indexPages.Count())
+			{
+				return false;
+			}
+
+			if (index < indexPages.Count())
+			{
+				BufferPage page = indexPages[index];
+				auto numbers = (vuint64_t*)bm->LockPage(source, page);
+				if (!numbers) return false;
+				numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN] = address.index;
+				bm->UnlockPage(source, page, numbers, true);
+			}
+			else
+			{
+				BufferPage lastPage = indexPages[indexPages.Count() - 1];
+				BufferPage currentPage = bm->AllocatePage(source);
+				if (!currentPage.IsValid())
+				{
+					return false;
+				}
+
+				auto numbers = (vuint64_t*)bm->LockPage(source, lastPage);
+				if (!numbers) return false;
+				numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE] = currentPage.index;
+				bm->UnlockPage(source, lastPage, numbers, true);
+
+				numbers = (vuint64_t*)bm->LockPage(source, currentPage);
+				memset(numbers, 0, pageSize);
+				numbers[INDEX_INDEXPAGE_ADDRESSITEMS] = 0;
+				numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE] = INDEX_INVALID;
+				numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN] = address.index;
+				bm->UnlockPage(source, currentPage, numbers, true);
+				indexPages.Add(currentPage);
+			}
+
+			return true;
+		}
+
+		bool LogManager::AllocateBlock(vuint64_t minSize, vuint64_t& size, BufferPointer& address)
+		{
+			if (minSize == 0 || size == 0 || size < minSize) return false;
+			minSize = IntUpperBound(minSize, pageSize);
+			if (minSize > pageSize) return false;
+			size = IntUpperBound(size, pageSize);
+
+			if (nextBlockAddress.IsValid())
+			{
+				BufferPage page = bm->AllocatePage(source);
+				if (!page.IsValid()) return false;
+				if (!bm->EncodePointer(nextBlockAddress, page, 0)) return false;
+			}
+
+			BufferPage page;
+			vuint64_t offset;
+			if (!bm->DecodePointer(nextBlockAddress, page, offset)) return false;
+
+			vuint64_t remain = pageSize - offset;
+			if (remain < minSize)
+			{
+				nextBlockAddress = BufferPointer::Invalid();
+				return AllocateBlock(minSize, size, address);
+			}
+			else
+			{
+				if (size > remain)
+				{
+					size = remain;
+				}
+				address = nextBlockAddress;
+				if (!bm->EncodePointer(nextBlockAddress, page, pageSize - size)) return false;
+			}
+
+			return true;
+		}
 
 		LogManager::LogManager(BufferManager* _bm, BufferSource _source, bool _createNew, bool _autoUnload)
 			:bm(_bm)
@@ -35,6 +120,7 @@ FileBufferSource
 			,pageSize(0)
 			,indexPageItemCount(0)
 			,usedTransactionCount(0)
+			,nextBlockAddress(BufferPointer::Invalid())
 		{
 			pageSize = bm->GetPageSize();
 			indexPageItemCount = (pageSize - INDEX_INDEXPAGE_ADDRESSITEMBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t);
