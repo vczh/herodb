@@ -10,7 +10,19 @@ extern WString GetTempFolder();
 #define KB *1024
 #define MB *1024*1024
 
-TEST_CASE(Utility_Log_OpenSingleTransaction)
+TEST_CASE(Utility_Log_TransactionWithNoItem)
+{
+}
+
+TEST_CASE(Utility_Log_TransactionWithOneEmptyItem)
+{
+}
+
+TEST_CASE(Utility_Log_TransactionWithOneNonEmptyItem)
+{
+}
+
+TEST_CASE(Utility_Log_TransactionWithMultipleItems)
 {
 }
 
