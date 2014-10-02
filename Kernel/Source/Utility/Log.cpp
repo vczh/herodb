@@ -268,7 +268,7 @@ LogManager
 				if (index == -1) return false;
 
 				auto desc = activeTransactions.Values()[index];
-				if (desc->writer->IsOpening()) return false;
+				if (desc->writer && desc->writer->IsOpening()) return false;
 
 				activeTransactions.Remove(transaction.index);
 			}
@@ -285,7 +285,17 @@ LogManager
 
 		Ptr<ILogWriter> LogManager::OpenLogItem(BufferTransaction transaction)
 		{
-			throw 0;
+			SPIN_LOCK(lock)
+			{
+				auto index = activeTransactions.Keys().IndexOf(transaction.index);
+				if (index == -1) return nullptr;
+
+				auto desc = activeTransactions.Values()[index];
+				if (desc->writer) return nullptr;
+
+				desc->writer = new LogWriter(transaction);
+				return desc->writer;
+			}
 		}
 
 		Ptr<ILogReader> LogManager::EnumLogItem(BufferTransaction transaction)

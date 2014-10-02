@@ -20,14 +20,6 @@ TEST_CASE(Utility_Log_TransactionWithNoItem)
 	TEST_ASSERT(trans.IsValid());
 	TEST_ASSERT(log.IsActive(trans) == true);
 
-	auto writer = log.OpenLogItem(trans);
-	TEST_ASSERT(writer);
-	TEST_ASSERT(writer->GetTransaction().index == trans.index);
-	TEST_ASSERT(!log.CloseTransaction(trans));
-
-	TEST_ASSERT(writer->Close() == true);
-	TEST_ASSERT(log.IsActive(trans) == true);
-
 	auto reader = log.EnumLogItem(trans);
 	TEST_ASSERT(reader);
 	TEST_ASSERT(reader->GetTransaction().index == trans.index);
