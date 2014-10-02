@@ -25,6 +25,70 @@ namespace vl
 	namespace database
 	{
 /***********************************************************************
+LogManager::LogWriter
+***********************************************************************/
+
+		LogManager::LogWriter::LogWriter(BufferTransaction _trans)
+			:trans(_trans)
+			,opening(true)
+		{
+		}
+
+		LogManager::LogWriter::~LogWriter()
+		{
+		}
+
+		BufferTransaction LogManager::LogWriter::GetTransaction()
+		{
+			return trans;
+		}
+
+		stream::IStream& LogManager::LogWriter::GetStream()
+		{
+			throw 0;
+		}
+
+		bool LogManager::LogWriter::IsOpening()
+		{
+			return opening;
+		}
+
+		bool LogManager::LogWriter::Close()
+		{
+			if (!opening) return false;
+			opening = true;
+			return true;
+		}
+
+/***********************************************************************
+LogManager::LogReader
+***********************************************************************/
+
+		LogManager::LogReader::LogReader(BufferTransaction _trans)
+			:trans(_trans)
+		{
+		}
+
+		BufferTransaction LogManager::LogReader::GetTransaction()
+		{
+			return trans;
+		}
+
+		stream::IStream& LogManager::LogReader::GetStream()
+		{
+			throw 0;
+		}
+
+		LogManager::LogReader::~LogReader()
+		{
+		}
+
+		bool LogManager::LogReader::NextItem()
+		{
+			return false;
+		}
+
+/***********************************************************************
 LogManager
 ***********************************************************************/
 
@@ -180,17 +244,43 @@ LogManager
 
 		BufferTransaction LogManager::OpenTransaction()
 		{
-			throw 0;
+			BufferTransaction trans;
+			SPIN_LOCK(lock)
+			{
+				trans.index = INCRC(&usedTransactionCount);
+				BufferPointer address = BufferPointer::Invalid();
+				WriteAddressItem(trans, address);
+
+				auto desc = MakePtr<LogTransDesc>();
+				desc->firstItem = BufferPointer::Invalid();
+				desc->lastItem = BufferPointer::Invalid();
+
+				activeTransactions.Add(trans.index, desc);
+			}
+			return trans;
 		}
 
 		bool LogManager::CloseTransaction(BufferTransaction transaction)
 		{
-			throw 0;
+			SPIN_LOCK(lock)
+			{
+				auto index = activeTransactions.Keys().IndexOf(transaction.index);
+				if (index == -1) return false;
+
+				auto desc = activeTransactions.Values()[index];
+				if (desc->writer->IsOpening()) return false;
+
+				activeTransactions.Remove(transaction.index);
+			}
+			return true;
 		}
 
 		bool LogManager::IsActive(BufferTransaction transaction)
 		{
-			throw 0;
+			SPIN_LOCK(lock)
+			{
+				return activeTransactions.Keys().Contains(transaction.index);
+			}
 		}
 
 		Ptr<ILogWriter> LogManager::OpenLogItem(BufferTransaction transaction)
@@ -200,12 +290,26 @@ LogManager
 
 		Ptr<ILogReader> LogManager::EnumLogItem(BufferTransaction transaction)
 		{
-			throw 0;
+			SPIN_LOCK(lock)
+			{
+				if (activeTransactions.Keys().Contains(transaction.index))
+				{
+					return new LogReader(transaction);
+				}
+			}
+			return nullptr;
 		}
 
 		Ptr<ILogReader> LogManager::EnumInactiveLogItem(BufferTransaction transaction)
 		{
-			throw 0;
+			SPIN_LOCK(lock)
+			{
+				if (transaction.index < usedTransactionCount && !activeTransactions.Keys().Contains(transaction.index))
+				{
+					return new LogReader(transaction);
+				}
+			}
+			return nullptr;
 		}
 	}
 }

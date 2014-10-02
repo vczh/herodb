@@ -14,13 +14,6 @@ namespace vl
 {
 	namespace database
 	{
-		class LogTransDesc
-		{
-		public:
-			BufferPointer				firstItem;
-			BufferPointer				lastItem;
-		};
-
 		class ILogAccessor : public virtual Interface
 		{
 		public:
@@ -41,10 +34,51 @@ namespace vl
 			virtual bool				Close() = 0;
 		};
 
+		class LogTransDesc
+		{
+		public:
+			BufferPointer				firstItem;
+			BufferPointer				lastItem;
+
+			Ptr<ILogWriter>				writer;
+		};
+
 		class LogManager : public Object
 		{
 			typedef collections::Dictionary<BufferTransaction::IndexType, Ptr<LogTransDesc>>		TransMap;
 			typedef collections::List<BufferPage>													PageList;
+
+		private:
+
+			class LogWriter : public Object, public ILogWriter
+			{
+			private:
+				BufferTransaction		trans;
+				bool					opening;
+
+			public:
+				LogWriter(BufferTransaction _trans);
+				~LogWriter();
+
+				BufferTransaction		GetTransaction()override;
+				stream::IStream&		GetStream()override;
+				bool					IsOpening()override;
+				bool					Close()override;
+			};
+
+			class LogReader : public Object, public ILogReader
+			{
+			private:
+				BufferTransaction		trans;
+
+			public:
+				LogReader(BufferTransaction _trans);
+				~LogReader();
+
+				BufferTransaction		GetTransaction()override;
+				stream::IStream&		GetStream()override;
+				bool					NextItem()override;
+			};
 
 		private:
 			BufferManager*				bm;

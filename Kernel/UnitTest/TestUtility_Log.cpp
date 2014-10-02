@@ -1,5 +1,5 @@
 #include "UnitTest.h"
-#include "../Source/Utility/Buffer.h"
+#include "../Source/Utility/Log.h"
 
 using namespace vl;
 using namespace vl::database;
@@ -12,6 +12,36 @@ extern WString GetTempFolder();
 
 TEST_CASE(Utility_Log_TransactionWithNoItem)
 {
+	BufferManager bm(4 KB, 16);
+	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
+	LogManager log(&bm, source, true);
+
+	auto trans = log.OpenTransaction();
+	TEST_ASSERT(trans.IsValid());
+	TEST_ASSERT(log.IsActive(trans) == true);
+
+	auto writer = log.OpenLogItem(trans);
+	TEST_ASSERT(writer);
+	TEST_ASSERT(writer->GetTransaction().index == trans.index);
+	TEST_ASSERT(!log.CloseTransaction(trans));
+
+	TEST_ASSERT(writer->Close() == true);
+	TEST_ASSERT(log.IsActive(trans) == true);
+
+	auto reader = log.EnumLogItem(trans);
+	TEST_ASSERT(reader);
+	TEST_ASSERT(reader->GetTransaction().index == trans.index);
+	TEST_ASSERT(!log.EnumInactiveLogItem(trans));
+	TEST_ASSERT(reader->NextItem() == false);
+
+	TEST_ASSERT(log.CloseTransaction(trans) == true);
+	TEST_ASSERT(log.IsActive(trans) == false);
+
+	reader = log.EnumInactiveLogItem(trans);
+	TEST_ASSERT(reader);
+	TEST_ASSERT(reader->GetTransaction().index == trans.index);
+	TEST_ASSERT(!log.EnumLogItem(trans));
+	TEST_ASSERT(reader->NextItem() == false);
 }
 
 TEST_CASE(Utility_Log_TransactionWithOneEmptyItem)
