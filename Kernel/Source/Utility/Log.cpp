@@ -82,7 +82,6 @@ LogManager::LogWriter
 					auto pointer = (char*)log->bm->LockPage(log->source, page);
 					auto numbers = (vuint64_t*)(pointer + offset);
 
-					auto writtenNumber = numbers;
 					switch (numberCount)
 					{
 						case 4:
@@ -94,7 +93,7 @@ LogManager::LogWriter
 							*numbers ++ = INDEX_INVALID;
 					}
 					stream.SeekFromBegin(0);
-					stream.Read(writtenNumber, (remain < dataSize ? remain : dataSize));
+					stream.Read(numbers, (remain < dataSize ? remain : dataSize));
 					log->bm->UnlockPage(log->source, page, pointer, true);
 					
 					if (numberCount == 4)
@@ -110,7 +109,7 @@ LogManager::LogWriter
 					}
 					log->bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t));
 
-					if (remain > 0)
+					if (remain > dataSize)
 					{
 						written += dataSize;
 						remain -= dataSize;
@@ -210,6 +209,7 @@ LogManager::LogReader
 				numbers = (vuint64_t*)((char*)pointer + offset);
 				block = numbers;
 			}
+			stream->SeekFromBegin(0);
 
 			return true;
 		}
