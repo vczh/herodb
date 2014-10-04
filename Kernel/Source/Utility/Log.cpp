@@ -103,9 +103,13 @@ LogManager::LogWriter
 					}
 					else if (desc->lastItem.IsValid())
 					{
-						log->bm->DecodePointer(desc->lastItem, page, offset);
-						auto pointer = log->bm->LockPage(log->source, page);
-						*(vuint64_t*)((char*)pointer + offset) = address.index;
+						BufferPage lastItemPage;
+						vuint64_t lastItemOffset;
+						log->bm->DecodePointer(desc->lastItem, lastItemPage, lastItemOffset);
+
+						auto pointer = log->bm->LockPage(log->source, lastItemPage);
+						*(vuint64_t*)((char*)pointer + lastItemOffset) = address.index;
+						log->bm->UnlockPage(log->source, lastItemPage, pointer, true);
 					}
 					log->bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t));
 
@@ -120,8 +124,10 @@ LogManager::LogWriter
 						break;
 					}
 				}
+
+				opening = false;
+				desc->writer = 0;
 			}
-			opening = false;
 			return true;
 		}
 
