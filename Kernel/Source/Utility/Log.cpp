@@ -267,6 +267,11 @@ LogManager
 				BufferPage page = indexPages[index];
 				auto numbers = (vuint64_t*)bm->LockPage(source, page);
 				if (!numbers) return false;
+				auto& count = numbers[INDEX_INDEXPAGE_ADDRESSITEMS];
+				if (count <= item)
+				{
+					count = item + 1;
+				}
 				numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN] = address.index;
 				bm->UnlockPage(source, page, numbers, true);
 			}
@@ -286,7 +291,7 @@ LogManager
 
 				numbers = (vuint64_t*)bm->LockPage(source, currentPage);
 				memset(numbers, 0, pageSize);
-				numbers[INDEX_INDEXPAGE_ADDRESSITEMS] = 0;
+				numbers[INDEX_INDEXPAGE_ADDRESSITEMS] = 1;
 				numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE] = INDEX_INVALID;
 				numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN] = address.index;
 				bm->UnlockPage(source, currentPage, numbers, true);

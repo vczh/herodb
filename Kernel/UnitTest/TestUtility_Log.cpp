@@ -193,12 +193,12 @@ TEST_CASE(Utility_Log_TransactionWithMultipleItems)
 TEST_CASE(Utility_Log_OpenTransactionsSequencial)
 {
 	BufferManager bm(4 KB, 16);
-	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
-	LogManager log(&bm, source, true);
-
 	List<BufferTransaction> transes;
 	List<WString> names;
 	List<WString> items;
+
+	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
+	LogManager log(&bm, source, true);
 
 	for (vint i = 0; i < 20; i++)
 	{
@@ -264,74 +264,78 @@ TEST_CASE(Utility_Log_OpenTransactionsSequencial)
 TEST_CASE(Utility_Log_OpenTransactionsParallel)
 {
 	BufferManager bm(4 KB, 16);
-	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
-	LogManager log(&bm, source, true);
-
 	List<BufferTransaction> transes;
 	List<WString> names;
 	List<WString> items;
 
-	for (vint i = 0; i < 20; i++)
 	{
-		transes.Add(log.OpenTransaction());
-		names.Add(L"Transaction<" + itow(i + 1) + L">");
-	}
+		auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
+		LogManager log(&bm, source, true);
 
-	for (vint i = 0; i < 20; i++)
-	{
-		items.Add(L"This is the " + itow(i + 1) + L"-th message.");
-	}
-	
-	for (vint j = 0; j < items.Count(); j++)
-	{
+		for (vint i = 0; i < 20; i++)
+		{
+			transes.Add(log.OpenTransaction());
+			names.Add(L"Transaction<" + itow(i + 1) + L">");
+		}
+
+		for (vint i = 0; i < 20; i++)
+		{
+			items.Add(L"This is the " + itow(i + 1) + L"-th message.");
+		}
+		
+		for (vint j = 0; j < items.Count(); j++)
+		{
+			for (vint i = 0; i < transes.Count(); i++)
+			{
+				auto message = names[i] + L": " + items[j];
+				console::Console::WriteLine(L"    Writing \"" + message + L"\".");
+				auto writer = log.OpenLogItem(transes[i]);
+				writer->GetStream().Write((void*)message.Buffer(), message.Length() * sizeof(wchar_t));
+				writer->Close();
+			}
+		}
+
 		for (vint i = 0; i < transes.Count(); i++)
 		{
-			auto message = names[i] + L": " + items[j];
-			console::Console::WriteLine(L"    Writing \"" + message + L"\".");
-			auto writer = log.OpenLogItem(transes[i]);
-			writer->GetStream().Write((void*)message.Buffer(), message.Length() * sizeof(wchar_t));
-			writer->Close();
+			auto reader = log.EnumLogItem(transes[i]);
+			for (vint j = 0; j < items.Count(); j++)
+			{
+				auto message = names[i] + L": " + items[j];
+				console::Console::WriteLine(L"    Reading \"" + message + L"\".");
+				wchar_t buffer[1024] = {0};
+				vint size = message.Length() * sizeof(wchar_t);
+				TEST_ASSERT(reader->NextItem() == true);
+				TEST_ASSERT(reader->GetStream().Size() == size);
+				TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
+				TEST_ASSERT(message == buffer);
+			}
 		}
-	}
 
-	for (vint i = 0; i < transes.Count(); i++)
-	{
-		auto reader = log.EnumLogItem(transes[i]);
-		for (vint j = 0; j < items.Count(); j++)
+		for (vint i = 0; i < 20; i++)
 		{
-			auto message = names[i] + L": " + items[j];
-			console::Console::WriteLine(L"    Reading \"" + message + L"\".");
-			wchar_t buffer[1024] = {0};
-			vint size = message.Length() * sizeof(wchar_t);
-			TEST_ASSERT(reader->NextItem() == true);
-			TEST_ASSERT(reader->GetStream().Size() == size);
-			TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
-			TEST_ASSERT(message == buffer);
+			log.CloseTransaction(transes[i]);
 		}
 	}
 
-	for (vint i = 0; i < 20; i++)
 	{
-		log.CloseTransaction(transes[i]);
-	}
+		auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", false);
+		LogManager log(&bm, source, false);
 
-	for (vint i = 0; i < transes.Count(); i++)
-	{
-		auto reader = log.EnumInactiveLogItem(transes[i]);
-		for (vint j = 0; j < items.Count(); j++)
+		for (vint i = 0; i < transes.Count(); i++)
 		{
-			auto message = names[i] + L": " + items[j];
-			console::Console::WriteLine(L"    Reading \"" + message + L"\".");
-			wchar_t buffer[1024] = {0};
-			vint size = message.Length() * sizeof(wchar_t);
-			TEST_ASSERT(reader->NextItem() == true);
-			TEST_ASSERT(reader->GetStream().Size() == size);
-			TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
-			TEST_ASSERT(message == buffer);
+			auto reader = log.EnumInactiveLogItem(transes[i]);
+			for (vint j = 0; j < items.Count(); j++)
+			{
+				auto message = names[i] + L": " + items[j];
+				console::Console::WriteLine(L"    Reading \"" + message + L"\".");
+				wchar_t buffer[1024] = {0};
+				vint size = message.Length() * sizeof(wchar_t);
+				TEST_ASSERT(reader->NextItem() == true);
+				TEST_ASSERT(reader->GetStream().Size() == size);
+				TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
+				TEST_ASSERT(message == buffer);
+			}
 		}
 	}
-}
 
-TEST_CASE(Utility_Log_LoadExistingLog)
-{
 }

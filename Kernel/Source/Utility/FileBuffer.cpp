@@ -80,6 +80,7 @@ FileBufferSource
 			{
 				FOREACH(Ptr<BufferPageDesc>, pageDesc, mappedPages.Values())
 				{
+					DECRC(totalUsedPages);
 					munmap(pageDesc->address, pageSize);
 				}
 				close(fileDescriptor);

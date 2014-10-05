@@ -40,6 +40,7 @@ InMemoryBufferSource
 				{
 					if (pageDesc)
 					{
+						DECRC(totalUsedPages);
 						free(pageDesc->address);
 					}
 				}
