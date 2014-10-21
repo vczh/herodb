@@ -53,11 +53,13 @@ namespace vl
 			class LogWriter : public Object, public ILogWriter
 			{
 			private:
+				LogManager*				log;
+				stream::MemoryStream	stream;
 				BufferTransaction		trans;
 				bool					opening;
 
 			public:
-				LogWriter(BufferTransaction _trans);
+				LogWriter(LogManager* _log, BufferTransaction _trans);
 				~LogWriter();
 
 				BufferTransaction		GetTransaction()override;
@@ -69,10 +71,11 @@ namespace vl
 			class LogReader : public Object, public ILogReader
 			{
 			private:
+				LogManager*				log;
 				BufferTransaction		trans;
 
 			public:
-				LogReader(BufferTransaction _trans);
+				LogReader(LogManager* _log, BufferTransaction _trans);
 				~LogReader();
 
 				BufferTransaction		GetTransaction()override;

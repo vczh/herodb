@@ -7,11 +7,11 @@
  *			Each address item is the address of transactions of 0, 1, ...
  * 		Log Page				:
  * 			Transaction Header	: [uint64 Transaction]<Item-Header>
- * 				Min Size = 5 * sizeof(uint64)
- * 			Item Header			: [uint64 ItemLength]<Item-Block>
  * 				Min Size = 4 * sizeof(uint64)
- * 			Item Block			: [uint64 CurrentBlockLength][uint64 NextBlockAddress/NextItemAddress][data, adjust to sizeof(uint64)]
+ * 			Item Header			: [uint64 ItemLength]<Item-Block>
  * 				Min Size = 3 * sizeof(uint64)
+ * 			Item Block			: [uint64 CurrentBlockLength][uint64 NextBlockAddress/NextItemAddress][data, adjust to sizeof(uint64)]
+ * 				Min Size = 2 * sizeof(uint64)
  */
 
 #define INDEX_INVALID (~(vuint64_t)0)
@@ -28,14 +28,19 @@ namespace vl
 LogManager::LogWriter
 ***********************************************************************/
 
-		LogManager::LogWriter::LogWriter(BufferTransaction _trans)
-			:trans(_trans)
+		LogManager::LogWriter::LogWriter(LogManager* _log, BufferTransaction _trans)
+			:log(_log)
+			,trans(_trans)
 			,opening(true)
 		{
 		}
 
 		LogManager::LogWriter::~LogWriter()
 		{
+			if (opening)
+			{
+				Close();
+			}
 		}
 
 		BufferTransaction LogManager::LogWriter::GetTransaction()
@@ -45,7 +50,7 @@ LogManager::LogWriter
 
 		stream::IStream& LogManager::LogWriter::GetStream()
 		{
-			throw 0;
+			return stream;
 		}
 
 		bool LogManager::LogWriter::IsOpening()
@@ -56,7 +61,59 @@ LogManager::LogWriter
 		bool LogManager::LogWriter::Close()
 		{
 			if (!opening) return false;
-			opening = true;
+			SPIN_LOCK(log->lock)
+			{
+				auto desc = log->activeTransactions[trans.index];
+				vint numberCount = desc->firstItem.IsValid() ? 4 : 3;
+
+				vuint64_t written = 0;
+				vuint64_t remain = stream.Size();
+				while (remain > 0)
+				{
+					vuint64_t itemHeader = numberCount * sizeof(vuint64_t);
+					vuint64_t dataSize = remain;
+					BufferPointer address;
+					log->AllocateBlock(itemHeader + dataSize, dataSize, address);
+
+					BufferPage page;
+					vuint64_t offset;
+					log->bm->DecodePointer(address, page, offset);
+					auto numbers = (vuint64_t*)log->bm->LockPage(log->source, page);
+
+					auto writtenNumber = numbers;
+					switch (numberCount)
+					{
+						case 4:
+							*numbers++ = trans.index;
+						case 3:
+							*numbers++ = stream.Size();
+						case 2:
+							*numbers++ = dataSize;
+							*numbers ++ = INDEX_INVALID;
+					}
+					stream.SeekFromBegin(0);
+					stream.Read(writtenNumber, (remain < dataSize ? remain : dataSize));
+					log->bm->UnlockPage(log->source, page, numbers, true);
+
+					written += dataSize;
+					remain -= dataSize;
+					
+					if (numberCount == 4)
+					{
+						desc->firstItem = address;
+						log->WriteAddressItem(trans, address);
+					}
+					else if (desc->lastItem.IsValid())
+					{
+						log->bm->DecodePointer(desc->lastItem, page, offset);
+						auto pointer = log->bm->LockPage(log->source, page);
+						*(vuint64_t*)((char*)pointer + offset) = address.index;
+					}
+					log->bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t));
+					numberCount = 2;
+				}
+			}
+			opening = false;
 			return true;
 		}
 
@@ -64,8 +121,9 @@ LogManager::LogWriter
 LogManager::LogReader
 ***********************************************************************/
 
-		LogManager::LogReader::LogReader(BufferTransaction _trans)
-			:trans(_trans)
+		LogManager::LogReader::LogReader(LogManager* _log, BufferTransaction _trans)
+			:log(_log)
+			,trans(_trans)
 		{
 		}
 
@@ -143,7 +201,7 @@ LogManager
 		bool LogManager::AllocateBlock(vuint64_t minSize, vuint64_t& size, BufferPointer& address)
 		{
 			if (minSize == 0 || size == 0 || size < minSize) return false;
-			minSize = IntUpperBound(minSize, pageSize);
+			minSize = IntUpperBound(minSize, sizeof(vuint64_t));
 			if (minSize > pageSize) return false;
 			size = IntUpperBound(size, pageSize);
 
@@ -293,7 +351,7 @@ LogManager
 				auto desc = activeTransactions.Values()[index];
 				if (desc->writer) return nullptr;
 
-				desc->writer = new LogWriter(transaction);
+				desc->writer = new LogWriter(this, transaction);
 				return desc->writer;
 			}
 		}
@@ -304,7 +362,7 @@ LogManager
 			{
 				if (activeTransactions.Keys().Contains(transaction.index))
 				{
-					return new LogReader(transaction);
+					return new LogReader(this, transaction);
 				}
 			}
 			return nullptr;
@@ -316,7 +374,7 @@ LogManager
 			{
 				if (transaction.index < usedTransactionCount && !activeTransactions.Keys().Contains(transaction.index))
 				{
-					return new LogReader(transaction);
+					return new LogReader(this, transaction);
 				}
 			}
 			return nullptr;
