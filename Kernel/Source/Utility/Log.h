@@ -53,34 +53,36 @@ namespace vl
 			class LogWriter : public Object, public ILogWriter
 			{
 			private:
-				LogManager*				log;
-				stream::MemoryStream	stream;
-				BufferTransaction		trans;
-				bool					opening;
+				LogManager*					log;
+				stream::MemoryStream		stream;
+				BufferTransaction			trans;
+				bool						opening;
 
 			public:
 				LogWriter(LogManager* _log, BufferTransaction _trans);
 				~LogWriter();
 
-				BufferTransaction		GetTransaction()override;
-				stream::IStream&		GetStream()override;
-				bool					IsOpening()override;
-				bool					Close()override;
+				BufferTransaction			GetTransaction()override;
+				stream::IStream&			GetStream()override;
+				bool						IsOpening()override;
+				bool						Close()override;
 			};
 
 			class LogReader : public Object, public ILogReader
 			{
 			private:
-				LogManager*				log;
-				BufferTransaction		trans;
+				LogManager*					log;
+				BufferTransaction			trans;
+				BufferPointer				item;
+				Ptr<stream::MemoryStream>	stream;
 
 			public:
 				LogReader(LogManager* _log, BufferTransaction _trans);
 				~LogReader();
 
-				BufferTransaction		GetTransaction()override;
-				stream::IStream&		GetStream()override;
-				bool					NextItem()override;
+				BufferTransaction			GetTransaction()override;
+				stream::IStream&			GetStream()override;
+				bool						NextItem()override;
 			};
 
 		private:

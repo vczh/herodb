@@ -78,7 +78,8 @@ LogManager::LogWriter
 					BufferPage page;
 					vuint64_t offset;
 					log->bm->DecodePointer(address, page, offset);
-					auto numbers = (vuint64_t*)log->bm->LockPage(log->source, page);
+					auto pointer = (char*)log->bm->LockPage(log->source, page);
+					auto numbers = (vuint64_t*)(pointer + offset);
 
 					auto writtenNumber = numbers;
 					switch (numberCount)
@@ -93,7 +94,7 @@ LogManager::LogWriter
 					}
 					stream.SeekFromBegin(0);
 					stream.Read(writtenNumber, (remain < dataSize ? remain : dataSize));
-					log->bm->UnlockPage(log->source, page, numbers, true);
+					log->bm->UnlockPage(log->source, page, pointer, true);
 
 					written += dataSize;
 					remain -= dataSize;
@@ -124,7 +125,17 @@ LogManager::LogReader
 		LogManager::LogReader::LogReader(LogManager* _log, BufferTransaction _trans)
 			:log(_log)
 			,trans(_trans)
+			,item(BufferPointer::Invalid())
 		{
+			auto desc = log->activeTransactions[trans.index];
+			item = desc->firstItem;
+
+			BufferPage page;
+			vuint64_t offset;
+			log->bm->DecodePointer(item, page, offset);
+			
+			offset += sizeof(vuint64_t);
+			log->bm->EncodePointer(item, page, offset);
 		}
 
 		BufferTransaction LogManager::LogReader::GetTransaction()
@@ -134,7 +145,7 @@ LogManager::LogReader
 
 		stream::IStream& LogManager::LogReader::GetStream()
 		{
-			throw 0;
+			return *stream.Obj();
 		}
 
 		LogManager::LogReader::~LogReader()
@@ -143,7 +154,45 @@ LogManager::LogReader
 
 		bool LogManager::LogReader::NextItem()
 		{
-			return false;
+			if (!item.IsValid()) return false;
+			stream = new stream::MemoryStream();
+
+			BufferPage page;
+			vuint64_t offset;
+			log->bm->DecodePointer(item, page, offset);
+			auto pointer = log->bm->LockPage(log->source, page);
+			auto numbers = (vuint64_t*)((char*)pointer + offset);
+			auto remain = numbers[0];
+			auto block = numbers + 1;
+
+			while (true)
+			{
+				auto blockSize = block[0];
+				item.index = block[1];
+				if (blockSize > remain)
+				{
+					blockSize = remain;
+				}
+				
+				if (blockSize > 0)
+				{
+					stream->Write(block + 2, blockSize);
+				}
+
+				remain -= blockSize;
+				log->bm->UnlockPage(log->source, page, pointer, false);
+
+				if (remain == 0 || !item.IsValid())
+				{
+					break;
+				}
+				log->bm->DecodePointer(item, page, offset);
+				pointer = log->bm->LockPage(log->source, page);
+				numbers = (vuint64_t*)((char*)pointer + offset);
+				block = numbers;
+			}
+
+			return true;
 		}
 
 /***********************************************************************
