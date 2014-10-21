@@ -74,7 +74,7 @@ LogManager::LogWriter
 					vuint64_t blockSize = itemHeader + remain;
 					BufferPointer address;
 					log->AllocateBlock(blockSize, blockSize, address);
-					vuint64_t dataSize = blockSize - remain;
+					vuint64_t dataSize = blockSize - itemHeader;
 
 					BufferPage page;
 					vuint64_t offset;
