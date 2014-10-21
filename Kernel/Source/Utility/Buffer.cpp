@@ -250,14 +250,14 @@ BufferManager
 		bool BufferManager::EncodePointer(BufferPointer& pointer, BufferPage page, vuint64_t offset)
 		{
 			if (offset >= pageSize) return false;
-			pointer.index = (page.index << pageSizeBits) & offset;
+			pointer.index = (page.index << pageSizeBits) | offset;
 			return true;
 		}
 
 		bool BufferManager::DecodePointer(BufferPointer pointer, BufferPage& page, vuint64_t& offset)
 		{
 			page.index = pointer.index >> pageSizeBits;
-			offset = pointer.index << pageSizeBits >> pageSizeBits;
+			offset = pointer.index % (1 << pageSizeBits);
 			return true;
 		}
 	}

@@ -98,6 +98,7 @@ namespace vl
 			TransMap					activeTransactions;
 			BufferPointer				nextBlockAddress;
 
+			BufferPointer				ReadAddressItem(BufferTransaction transaction);
 			bool						WriteAddressItem(BufferTransaction transaction, BufferPointer address);
 			bool						AllocateBlock(vuint64_t minSize, vuint64_t& size, BufferPointer& address);
 		public:

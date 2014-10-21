@@ -64,16 +64,17 @@ LogManager::LogWriter
 			SPIN_LOCK(log->lock)
 			{
 				auto desc = log->activeTransactions[trans.index];
-				vint numberCount = desc->firstItem.IsValid() ? 4 : 3;
+				vint numberCount = desc->firstItem.IsValid() ? 3 : 4;
 
 				vuint64_t written = 0;
 				vuint64_t remain = stream.Size();
-				while (remain > 0)
+				while (true)
 				{
 					vuint64_t itemHeader = numberCount * sizeof(vuint64_t);
-					vuint64_t dataSize = remain;
+					vuint64_t blockSize = itemHeader + remain;
 					BufferPointer address;
-					log->AllocateBlock(itemHeader + dataSize, dataSize, address);
+					log->AllocateBlock(blockSize, blockSize, address);
+					vuint64_t dataSize = blockSize - remain;
 
 					BufferPage page;
 					vuint64_t offset;
@@ -95,9 +96,6 @@ LogManager::LogWriter
 					stream.SeekFromBegin(0);
 					stream.Read(writtenNumber, (remain < dataSize ? remain : dataSize));
 					log->bm->UnlockPage(log->source, page, pointer, true);
-
-					written += dataSize;
-					remain -= dataSize;
 					
 					if (numberCount == 4)
 					{
@@ -111,7 +109,17 @@ LogManager::LogWriter
 						*(vuint64_t*)((char*)pointer + offset) = address.index;
 					}
 					log->bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t));
-					numberCount = 2;
+
+					if (remain > 0)
+					{
+						written += dataSize;
+						remain -= dataSize;
+						numberCount = 2;
+					}
+					else
+					{
+						break;
+					}
 				}
 			}
 			opening = false;
@@ -127,15 +135,26 @@ LogManager::LogReader
 			,trans(_trans)
 			,item(BufferPointer::Invalid())
 		{
-			auto desc = log->activeTransactions[trans.index];
-			item = desc->firstItem;
+			vint index = log->activeTransactions.Keys().IndexOf(trans.index);
+			if (index == -1)
+			{
+				item = log->ReadAddressItem(trans);
+			}
+			else
+			{
+				auto desc = log->activeTransactions[trans.index];
+				item = desc->firstItem;
+			}
 
-			BufferPage page;
-			vuint64_t offset;
-			log->bm->DecodePointer(item, page, offset);
-			
-			offset += sizeof(vuint64_t);
-			log->bm->EncodePointer(item, page, offset);
+			if (item.IsValid())
+			{
+				BufferPage page;
+				vuint64_t offset;
+				log->bm->DecodePointer(item, page, offset);
+				
+				offset += sizeof(vuint64_t);
+				log->bm->EncodePointer(item, page, offset);
+			}
 		}
 
 		BufferTransaction LogManager::LogReader::GetTransaction()
@@ -199,6 +218,30 @@ LogManager::LogReader
 LogManager
 ***********************************************************************/
 
+		BufferPointer LogManager::ReadAddressItem(BufferTransaction transaction)
+		{
+			if (transaction.index >= usedTransactionCount)
+			{
+				return BufferPointer::Invalid();
+			}
+
+			vuint64_t index = transaction.index / indexPageItemCount;
+			vuint64_t item = transaction.index % indexPageItemCount;
+			if (index >= indexPages.Count())
+			{
+				return BufferPointer::Invalid();
+			}
+
+			BufferPage page = indexPages[index];
+			auto numbers = (vuint64_t*)bm->LockPage(source, page);
+			if (!numbers) return BufferPointer::Invalid();
+			auto result = numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN];
+			bm->UnlockPage(source, page, numbers, true);
+
+			BufferPointer address{result};
+			return address;
+		}
+
 		bool LogManager::WriteAddressItem(BufferTransaction transaction, BufferPointer address)
 		{
 			if (transaction.index >= usedTransactionCount)
@@ -252,9 +295,9 @@ LogManager
 			if (minSize == 0 || size == 0 || size < minSize) return false;
 			minSize = IntUpperBound(minSize, sizeof(vuint64_t));
 			if (minSize > pageSize) return false;
-			size = IntUpperBound(size, pageSize);
+			size = IntUpperBound(size, sizeof(vuint64_t));
 
-			if (nextBlockAddress.IsValid())
+			if (!nextBlockAddress.IsValid())
 			{
 				BufferPage page = bm->AllocatePage(source);
 				if (!page.IsValid()) return false;
@@ -278,7 +321,7 @@ LogManager
 					size = remain;
 				}
 				address = nextBlockAddress;
-				if (!bm->EncodePointer(nextBlockAddress, page, pageSize - size)) return false;
+				if (!bm->EncodePointer(nextBlockAddress, page, offset + size)) return false;
 			}
 
 			return true;
