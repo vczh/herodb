@@ -7,6 +7,9 @@
 ~$*.docx
 ~*.tmp
 *.o
+*.gcov
+*.gcno
+*.gcda
 **/Obj/**
 **/Bin/**
 *~

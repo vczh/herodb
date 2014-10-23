@@ -23,7 +23,7 @@ VLPP_o = $(patsubst $(VLPP_DIR)%.cpp, $(obj_TARGET)%.o, $(VLPP_cpp))
 
 ALL_o = $(DATABASE_UTILITY_o) $(VLPP_o) $(UNITTEST_o)
 all : $(ALL_o)
-	g++ -std=c++11 -g -o $(bin_TARGET)UnitTest  $(ALL_o)
+	g++ -std=c++11 -fprofile-arcs -o $(bin_TARGET)UnitTest  $(ALL_o)
 
 $(DATABASE_BASIC_h) : $(VLPP_h)
 $(DATABASE_UTILITY_h) : $(DATABASE_BASIC_h)
@@ -33,11 +33,11 @@ $(UNITTEST_h) : $(DATABASE_BASIC_h) $(DATABASE_UTILITY_h)
 $(UNITTEST_cpp) : $(UNITTEST_h)
 
 $(DATABASE_UTILITY_o) : $(obj_TARGET)%.o : $(DATABASE_UTILITY_DIR)%.cpp
-	g++ -std=c++11 -g -o $@ -c $<
+	g++ -std=c++11 -g -fprofile-arcs -ftest-coverage -o $@ -c $<
 $(VLPP_o) : $(obj_TARGET)%.o : $(VLPP_DIR)%.cpp
-	g++ -std=c++11 -g -o $@ -c $<
+	g++ -std=c++11 -g -fprofile-arcs -ftest-coverage -o $@ -c $<
 $(UNITTEST_o) : $(obj_TARGET)%.o : $(UNITTEST_DIR)%.cpp
-	g++ -std=c++11 -g -o $@ -c $<
+	g++ -std=c++11 -g -fprofile-arcs -ftest-coverage -o $@ -c $<
 
 clean:
 	rm $(bin_TARGET)* -rf
