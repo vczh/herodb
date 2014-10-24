@@ -177,7 +177,6 @@ TEST_CASE(Utility_Buffer_AllocateAndSwap)
 }
 
 // Only enable this test case when refactor BufferManager
-/*
 TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
 {
 	BufferManager bm(4 KB, 16);
@@ -213,4 +212,3 @@ TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
 		if (page.index != expecting.index) throw 0;
 	}
 }
-*/
