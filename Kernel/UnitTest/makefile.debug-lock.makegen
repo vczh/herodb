@@ -1,0 +1,22 @@
+include
+	../Source/makefile.database.makegen
+
+folder UNITTEST = .
+	h = *.h
+	cpp = Main.cpp TestUtility_Lock.cpp
+
+dependency
+	UNITTEST:h < DATABASE:h
+	UNITTEST:cpp < UNITTEST:h
+
+targets
+	obj = ./Obj/
+	bin = ./Bin/
+
+map cpp : %.cpp
+	> o : obj %.o
+	g++ -std=c++11 -g -fprofile-arcs -ftest-coverage -o $(OUT) -c $(IN)
+
+link o :
+	> exe : bin UnitTest 
+	g++ -std=c++11 -fprofile-arcs -o $(OUT) $(IN)

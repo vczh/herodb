@@ -1,4 +1,4 @@
-# This file is generated from "./makefile.debug.makegen" by Vczh Makefile Generator
+# This file is generated from "./makefile.debug-lock.makegen" by Vczh Makefile Generator
 
 .PHONY : all clean
 
@@ -11,7 +11,7 @@ DATABASE_UTILITY_DIR = ./../Source/./Utility/
 DATABASE_UTILITY_cpp = $(wildcard $(DATABASE_UTILITY_DIR)*.cpp)
 DATABASE_UTILITY_h = $(wildcard $(DATABASE_UTILITY_DIR)*.h)
 UNITTEST_DIR = ././
-UNITTEST_cpp = $(wildcard $(UNITTEST_DIR)*.cpp)
+UNITTEST_cpp = $(UNITTEST_DIR)Main.cpp $(UNITTEST_DIR)TestUtility_Lock.cpp
 UNITTEST_h = $(wildcard $(UNITTEST_DIR)*.h)
 VLPP_DIR = ./../Source/./
 VLPP_cpp = $(VLPP_DIR)Vlpp.cpp

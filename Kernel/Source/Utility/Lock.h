@@ -77,7 +77,7 @@ namespace vl
 
 			BufferTask		PickTask(LockResult& result);
 			void			DetectDeadlock(DeadlockInfo::List& infos);
-			bool			Rollback(Transaction trans);
+			bool			Rollback(BufferTransaction trans);
 		};
 	}
 }
