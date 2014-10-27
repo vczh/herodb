@@ -68,12 +68,13 @@ LogManager::LogWriter
 
 				vuint64_t written = 0;
 				vuint64_t remain = stream.Size();
+				stream.SeekFromBegin(0);
 				while (true)
 				{
 					vuint64_t itemHeader = numberCount * sizeof(vuint64_t);
 					vuint64_t blockSize = itemHeader + remain;
 					BufferPointer address;
-					log->AllocateBlock(blockSize, blockSize, address);
+					log->AllocateBlock(itemHeader, blockSize, address);
 					vuint64_t dataSize = blockSize - itemHeader;
 
 					BufferPage page;
@@ -92,7 +93,6 @@ LogManager::LogWriter
 							*numbers++ = dataSize;
 							*numbers ++ = INDEX_INVALID;
 					}
-					stream.SeekFromBegin(0);
 					stream.Read(numbers, (remain < dataSize ? remain : dataSize));
 					log->bm->UnlockPage(log->source, page, pointer, true);
 					
@@ -332,7 +332,14 @@ LogManager
 					size = remain;
 				}
 				address = nextBlockAddress;
-				if (!bm->EncodePointer(nextBlockAddress, page, offset + size)) return false;
+				if (offset + size >= pageSize)
+				{
+					nextBlockAddress = BufferPointer::Invalid();
+				}
+				else
+				{
+					bm->EncodePointer(nextBlockAddress, page, offset + size);
+				}
 			}
 
 			return true;
