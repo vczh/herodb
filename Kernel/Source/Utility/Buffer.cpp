@@ -193,14 +193,14 @@ BufferManager
 			return address;
 		}
 
-		bool BufferManager::UnlockPage(BufferSource source, BufferPage page, void* buffer, bool persist)
+		bool BufferManager::UnlockPage(BufferSource source, BufferPage page, void* buffer, PersistanceType persistanceType)
 		{
 			TRY_GET_BUFFER_SOURCE(bs, source, false);
 
 			bool successful = false;
 			SPIN_LOCK(bs->GetLock())
 			{
-				successful = bs->UnlockPage(page, buffer, persist);
+				successful = bs->UnlockPage(page, buffer, persistanceType);
 			}
 			SwapCacheIfNecessary();
 			return successful;

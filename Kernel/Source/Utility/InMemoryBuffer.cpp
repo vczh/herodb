@@ -170,7 +170,7 @@ InMemoryBufferSource
 				return pageDesc->address;
 			}
 
-			bool UnlockPage(BufferPage page, void* address, bool persist)override
+			bool UnlockPage(BufferPage page, void* address, PersistanceType persistanceType)override
 			{
 				if (page.index >= pages.Count())
 				{

@@ -14,6 +14,13 @@ namespace vl
 {
 	namespace database
 	{
+		enum class PersistanceType
+		{
+			NoChanging,
+			Changed,
+			ChangedAndPersist,
+		};
+
 		class IBufferSource : public virtual Interface
 		{
 		public:
@@ -28,7 +35,7 @@ namespace vl
 			virtual BufferPage		AllocatePage() = 0;
 			virtual bool			FreePage(BufferPage page) = 0;
 			virtual void*			LockPage(BufferPage page) = 0;
-			virtual bool			UnlockPage(BufferPage page, void* address, bool persist) = 0;
+			virtual bool			UnlockPage(BufferPage page, void* address, PersistanceType persistanceType) = 0;
 			virtual void			FillUnmapPageCandidates(collections::List<BufferPageTimeTuple>& pages, vint expectCount) = 0;
 		};
 
@@ -39,6 +46,7 @@ namespace vl
 			vuint64_t				offset = 0;
 			bool					locked = false;
 			vuint64_t				lastAccessTime = 0;
+			bool					dirty = false;
 		};
 
 		class BufferManager
@@ -69,7 +77,7 @@ namespace vl
 			WString				GetSourceFileName(BufferSource source);
 
 			void*				LockPage(BufferSource source, BufferPage page);
-			bool				UnlockPage(BufferSource source, BufferPage page, void* buffer, bool persist);
+			bool				UnlockPage(BufferSource source, BufferPage page, void* buffer, PersistanceType persistanceType);
 			BufferPage			GetIndexPage(BufferSource source);
 			BufferPage			AllocatePage(BufferSource source);
 			bool				FreePage(BufferSource source, BufferPage page);

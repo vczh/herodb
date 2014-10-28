@@ -103,7 +103,7 @@ FileBufferSource
 
 			Ptr<BufferPageDesc> MapPage(BufferPage page)
 			{
-				vint index =mappedPages.Keys().IndexOf(page.index);
+				vint index = mappedPages.Keys().IndexOf(page.index);
 				if (index == -1)
 				{
 					vuint64_t offset = page.index * pageSize;
@@ -156,6 +156,12 @@ FileBufferSource
 				if (pageDesc->locked)
 				{
 					return false;
+				}
+
+				if (pageDesc->dirty)
+				{
+					msync(pageDesc->address, pageSize, MS_SYNC);
+					pageDesc->dirty = false;
 				}
 				munmap(pageDesc->address, pageSize);
 
@@ -372,7 +378,7 @@ FileBufferSource
 				}
 			}
 
-			bool UnlockPage(BufferPage page, void* buffer, bool persist)override
+			bool UnlockPage(BufferPage page, void* buffer, PersistanceType persistanceType)override
 			{
 				vint index =mappedPages.Keys().IndexOf(page.index);
 				if (index == -1) return false;
@@ -381,9 +387,17 @@ FileBufferSource
 				if (pageDesc->address != buffer) return false;
 				if (!pageDesc->locked) return false;
 
-				if (persist)
+				switch (persistanceType)
 				{
-					msync(pageDesc->address, pageSize, MS_SYNC);
+					case PersistanceType::NoChanging:
+						break;
+					case PersistanceType::Changed:
+						pageDesc->dirty = true;
+						break;
+					case PersistanceType::ChangedAndPersist:
+						msync(pageDesc->address, pageSize, MS_SYNC);
+						pageDesc->dirty = false;
+						break;
 				}
 				pageDesc->locked = false;
 				return true;

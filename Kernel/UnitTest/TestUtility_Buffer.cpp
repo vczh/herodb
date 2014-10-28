@@ -59,14 +59,14 @@ TEST_CASE_SOURCE(LockUnlockPage)
 	TEST_ASSERT(bm.LockPage(source, page) == nullptr);
 
 	TEST_ASSERT(bm.FreePage(source, page) == false);
-	TEST_ASSERT(bm.UnlockPage(source, page, (char*)addr + 1, false) == false);
-	TEST_ASSERT(bm.UnlockPage(source, page, addr, false) == true);
-	TEST_ASSERT(bm.UnlockPage(source, page, addr, false) == false);
+	TEST_ASSERT(bm.UnlockPage(source, page, (char*)addr + 1, PersistanceType::NoChanging) == false);
+	TEST_ASSERT(bm.UnlockPage(source, page, addr, PersistanceType::NoChanging) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page, addr, PersistanceType::NoChanging) == false);
 
 	TEST_ASSERT(bm.FreePage(source, page) == true);
-	TEST_ASSERT(bm.UnlockPage(source, page, (char*)addr + 1, false) == false);
-	TEST_ASSERT(bm.UnlockPage(source, page, addr, false) == false);
-	TEST_ASSERT(bm.UnlockPage(source, page, addr, false) == false);
+	TEST_ASSERT(bm.UnlockPage(source, page, (char*)addr + 1, PersistanceType::NoChanging) == false);
+	TEST_ASSERT(bm.UnlockPage(source, page, addr, PersistanceType::NoChanging) == false);
+	TEST_ASSERT(bm.UnlockPage(source, page, addr, PersistanceType::NoChanging) == false);
 }
 
 TEST_CASE_SOURCE(AllocateFreePage)
@@ -84,7 +84,7 @@ TEST_CASE_SOURCE(AllocateFreePage)
 
 	auto addr0 = bm.LockPage(source, indexPage);
 	TEST_ASSERT(addr0 != nullptr);
-	TEST_ASSERT(bm.UnlockPage(source, indexPage, addr0, false)== true);
+	TEST_ASSERT(bm.UnlockPage(source, indexPage, addr0, PersistanceType::NoChanging)== true);
 	TEST_ASSERT(bm.FreePage(source, indexPage) == false);
 
 	auto addr1 = bm.LockPage(source, page1);
@@ -92,17 +92,17 @@ TEST_CASE_SOURCE(AllocateFreePage)
 	auto addr2 = bm.LockPage(source, page2);
 	TEST_ASSERT(addr2 != nullptr);
 
-	TEST_ASSERT(bm.UnlockPage(source, page1, addr1, false) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page1, addr1, PersistanceType::NoChanging) == true);
 	TEST_ASSERT(bm.FreePage(source, page1) == true);
 	TEST_ASSERT(bm.LockPage(source, page1) == nullptr);
 
 	strcpy((char*)addr2, "This is page 2");
-	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, true) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, PersistanceType::ChangedAndPersist) == true);
 
 	addr2 = bm.LockPage(source, page2);
 	TEST_ASSERT(addr2 != nullptr);
 	TEST_ASSERT(strcmp((char*)addr2, "This is page 2") == 0);
-	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, false) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, PersistanceType::NoChanging) == true);
 
 	auto page3 = bm.AllocatePage(source);
 	TEST_ASSERT(page3.index == page1.index);
@@ -110,7 +110,7 @@ TEST_CASE_SOURCE(AllocateFreePage)
 	TEST_ASSERT(addr3 != nullptr);
 
 	strcpy((char*)addr3, "This is page 3");
-	TEST_ASSERT(bm.UnlockPage(source, page3, addr3, true) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page3, addr3, PersistanceType::ChangedAndPersist) == true);
 
 	addr2 = bm.LockPage(source, page2);
 	TEST_ASSERT(addr2 != nullptr);
@@ -120,9 +120,9 @@ TEST_CASE_SOURCE(AllocateFreePage)
 	TEST_ASSERT(strcmp((char*)addr3, "This is page 3") == 0);
 
 	TEST_ASSERT(bm.LockPage(source, page2) == nullptr);
-	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, true) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, PersistanceType::ChangedAndPersist) == true);
 	TEST_ASSERT(bm.LockPage(source, page3) == nullptr);
-	TEST_ASSERT(bm.UnlockPage(source, page3, addr3, true) == true);
+	TEST_ASSERT(bm.UnlockPage(source, page3, addr3, PersistanceType::ChangedAndPersist) == true);
 }
 
 #define TEST_ASSERT_CACHE														\
@@ -154,7 +154,7 @@ TEST_CASE(Utility_Buffer_AllocateAndSwap)
 			TEST_ASSERT(address != nullptr);
 			TEST_ASSERT_CACHE;
 			wcscpy(address, (WString(sourceNames[j]) + itow(i + 1)).Buffer());
-			TEST_ASSERT(bm.UnlockPage(source, page, address, true));
+			TEST_ASSERT(bm.UnlockPage(source, page, address, PersistanceType::ChangedAndPersist));
 			TEST_ASSERT_CACHE;
 		}
 	}
@@ -170,7 +170,7 @@ TEST_CASE(Utility_Buffer_AllocateAndSwap)
 			TEST_ASSERT(address != nullptr);
 			TEST_ASSERT_CACHE;
 			TEST_ASSERT(wcscmp(address, (WString(sourceNames[j]) + itow(i + 1)).Buffer()) == 0);
-			TEST_ASSERT(bm.UnlockPage(source, page, address, true));
+			TEST_ASSERT(bm.UnlockPage(source, page, address, PersistanceType::ChangedAndPersist));
 			TEST_ASSERT_CACHE;
 		}
 	}

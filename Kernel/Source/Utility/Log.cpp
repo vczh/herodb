@@ -94,7 +94,7 @@ LogManager::LogWriter
 							*numbers ++ = INDEX_INVALID;
 					}
 					stream.Read(numbers, (remain < dataSize ? remain : dataSize));
-					log->bm->UnlockPage(log->source, page, pointer, true);
+					log->bm->UnlockPage(log->source, page, pointer, PersistanceType::ChangedAndPersist);
 					
 					if (numberCount == 4)
 					{
@@ -109,7 +109,7 @@ LogManager::LogWriter
 
 						auto pointer = log->bm->LockPage(log->source, lastItemPage);
 						*(vuint64_t*)((char*)pointer + lastItemOffset) = address.index;
-						log->bm->UnlockPage(log->source, lastItemPage, pointer, true);
+						log->bm->UnlockPage(log->source, lastItemPage, pointer, PersistanceType::ChangedAndPersist);
 					}
 					log->bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t));
 
@@ -204,7 +204,7 @@ LogManager::LogReader
 				}
 
 				remain -= blockSize;
-				log->bm->UnlockPage(log->source, page, pointer, false);
+				log->bm->UnlockPage(log->source, page, pointer, PersistanceType::NoChanging);
 
 				if (remain == 0 || !item.IsValid())
 				{
@@ -242,7 +242,7 @@ LogManager
 			auto numbers = (vuint64_t*)bm->LockPage(source, page);
 			if (!numbers) return BufferPointer::Invalid();
 			auto result = numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN];
-			bm->UnlockPage(source, page, numbers, true);
+			bm->UnlockPage(source, page, numbers, PersistanceType::ChangedAndPersist);
 
 			BufferPointer address{result};
 			return address;
@@ -273,7 +273,7 @@ LogManager
 					count = item + 1;
 				}
 				numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN] = address.index;
-				bm->UnlockPage(source, page, numbers, true);
+				bm->UnlockPage(source, page, numbers, PersistanceType::ChangedAndPersist);
 			}
 			else
 			{
@@ -287,14 +287,14 @@ LogManager
 				auto numbers = (vuint64_t*)bm->LockPage(source, lastPage);
 				if (!numbers) return false;
 				numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE] = currentPage.index;
-				bm->UnlockPage(source, lastPage, numbers, true);
+				bm->UnlockPage(source, lastPage, numbers, PersistanceType::ChangedAndPersist);
 
 				numbers = (vuint64_t*)bm->LockPage(source, currentPage);
 				memset(numbers, 0, pageSize);
 				numbers[INDEX_INDEXPAGE_ADDRESSITEMS] = 1;
 				numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE] = INDEX_INVALID;
 				numbers[item + INDEX_INDEXPAGE_ADDRESSITEMBEGIN] = address.index;
-				bm->UnlockPage(source, currentPage, numbers, true);
+				bm->UnlockPage(source, currentPage, numbers, PersistanceType::ChangedAndPersist);
 				indexPages.Add(currentPage);
 			}
 
@@ -366,7 +366,7 @@ LogManager
 				memset(numbers, 0, pageSize);
 				numbers[INDEX_INDEXPAGE_ADDRESSITEMS] = 0;
 				numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE] = INDEX_INVALID;
-				bm->UnlockPage(source, page, numbers, true);
+				bm->UnlockPage(source, page, numbers, PersistanceType::ChangedAndPersist);
 			}
 			else
 			{
@@ -379,7 +379,7 @@ LogManager
 					auto numbers = (vuint64_t*)bm->LockPage(source, previousPage);
 					page.index = numbers[INDEX_INDEXPAGE_NEXTINDEXPAGE];
 					usedTransactionCount += numbers[INDEX_INDEXPAGE_ADDRESSITEMS];
-					bm->UnlockPage(source, previousPage, numbers, false);
+					bm->UnlockPage(source, previousPage, numbers, PersistanceType::NoChanging);
 				}
 			}
 		}
