@@ -58,7 +58,7 @@ namespace vl
 			bool			UnregisterTable(BufferTable table);
 			bool			RegisterTransaction(BufferTransaction trans, vuint64_t importance);
 			bool			UnregisterTransaction(BufferTransaction trans);
-			bool			AcqureLock(const LockOwner& owner, const LockTarget& target, bool& blocked);
+			bool			AcquireLock(const LockOwner& owner, const LockTarget& target, bool& blocked);
 			bool			ReleaseLock(const LockOwner& owner, const LockTarget& target);
 			BufferTask		PickTask();
 			void			DetectDeadlock(DeadlockInfo::List& infos);
