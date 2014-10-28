@@ -36,6 +36,8 @@ namespace vl
 		DEFINE_INDEX_TYPE(BufferPage, vuint64_t);
 		DEFINE_INDEX_TYPE(BufferPointer, vuint64_t);
 		DEFINE_INDEX_TYPE(BufferTransaction, vuint64_t);
+		DEFINE_INDEX_TYPE(BufferTable, vint32_t);
+		DEFINE_INDEX_TYPE(BufferTask, vuint64_t);
 #undef DEFINE_INDEX_TYPE
 
 		template<typename T>
