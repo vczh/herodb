@@ -6773,7 +6773,7 @@ LazyList
 			template<typename U>
 			LazyList<Ptr<U>> Cast()const
 			{
-				Func<Ptr<U>(T)> f=[](T t)->Ptr<U>{return t.Cast<U>();};
+				Func<Ptr<U>(T)> f=[](T t)->Ptr<U>{return t.template Cast<U>();};
 				return new SelectEnumerator<T, Ptr<U>>(xs(), f);
 			}
 
