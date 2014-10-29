@@ -1,0 +1,22 @@
+include
+	../Source/makefile.database.makegen
+
+folder UNITTEST = .
+	h = *.h
+	cpp = *.cpp
+
+dependency
+	UNITTEST:h < DATABASE:h
+	UNITTEST:cpp < UNITTEST:h
+
+targets
+	obj = ./Obj/
+	bin = ./Bin/
+
+map cpp : %.cpp
+	> o : obj %.o
+	clang++ -std=c++11 -g -fprofile-arcs -ftest-coverage -o $(OUT) -c $(IN)
+
+link o :
+	> exe : bin UnitTest 
+	clang++ -std=c++11 -fprofile-arcs -o $(OUT) $(IN)
