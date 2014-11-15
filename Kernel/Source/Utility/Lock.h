@@ -63,21 +63,41 @@ namespace vl
 
 		class LockManager : public Object
 		{
+		protected:
+			struct TableInfo
+			{
+				BufferTable			table;
+				BufferSource		source;
+			};
+
+			struct TransInfo
+			{
+				BufferTransaction	trans;
+				vuint64_t			importance;
+			};
+
+			typedef collections::Dictionary<BufferTable::IndexType, Ptr<TableInfo>>			TableMap;
+			typedef collections::Dictionary<BufferTransaction::IndexType, Ptr<TransInfo>>	TransMap;
+
+			BufferManager*		bm;
+			SpinLock			lock;
+			TableMap			tables;
+			TransMap			transactions;
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
 
-			bool			RegisterTable(BufferTable table, BufferSource source);
-			bool			UnregisterTable(BufferTable table);
-			bool			RegisterTransaction(BufferTransaction trans, vuint64_t importance);
-			bool			UnregisterTransaction(BufferTransaction trans);
+			bool				RegisterTable(BufferTable table, BufferSource source);
+			bool				UnregisterTable(BufferTable table);
+			bool				RegisterTransaction(BufferTransaction trans, vuint64_t importance);
+			bool				UnregisterTransaction(BufferTransaction trans);
 
-			bool			AcquireLock(const LockOwner& owner, const LockTarget& target, LockResult& result);
-			bool			ReleaseLock(const LockOwner& owner, const LockTarget& target, const LockResult& result);
+			bool				AcquireLock(const LockOwner& owner, const LockTarget& target, LockResult& result);
+			bool				ReleaseLock(const LockOwner& owner, const LockTarget& target, const LockResult& result);
 
-			BufferTask		PickTask(LockResult& result);
-			void			DetectDeadlock(DeadlockInfo::List& infos);
-			bool			Rollback(BufferTransaction trans);
+			BufferTask			PickTask(LockResult& result);
+			void				DetectDeadlock(DeadlockInfo::List& infos);
+			bool				Rollback(BufferTransaction trans);
 		};
 	}
 }
