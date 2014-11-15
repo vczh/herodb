@@ -6,6 +6,7 @@
 *.test.txt
 ~$*.docx
 ~*.tmp
+.*.swp
 *.o
 *.gcov
 *.gcno
