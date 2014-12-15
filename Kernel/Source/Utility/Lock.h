@@ -18,6 +18,16 @@ namespace vl
 		{
 			BufferTransaction	transaction		= BufferTransaction::Invalid();
 			BufferTask			task			= BufferTask::Invalid();
+
+			LockOwner()
+			{
+			}
+
+			LockOwner(BufferTransaction _transaction, BufferTask _task)
+				:transaction(_transaction)
+				,task(_task)
+			{
+			}
 		};
 
 		enum class LockTargetType
@@ -44,6 +54,33 @@ namespace vl
 				BufferPage		page;
 				BufferPointer	address;
 			};
+
+			LockTarget()
+			{
+			}
+			
+			LockTarget(LockTargetAccess _access, BufferTable _table)
+				:type(LockTargetType::Table)
+				,access(_access)
+				,table(_table)
+			{
+			}
+			
+			LockTarget(LockTargetAccess _access, BufferTable _table, BufferPage _page)
+				:type(LockTargetType::Page)
+				,access(_access)
+				,table(_table)
+				,page(_page)
+			{
+			}
+			
+			LockTarget(LockTargetAccess _access, BufferTable _table, BufferPointer _address)
+				:type(LockTargetType::Row)
+				,access(_access)
+				,table(_table)
+				,address(_address)
+			{
+			}
 		};
 
 		struct LockResult
