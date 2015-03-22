@@ -4,6 +4,7 @@ namespace vl
 {
 	namespace database
 	{
+		using namespace collections;
 /***********************************************************************
 LockManager
 ***********************************************************************/
@@ -42,6 +43,10 @@ LockManager
 				{
 					if (lockInfo->xWriteOwner.transaction.IsValid())
 					{
+						if (lockInfo->xWriteOwner == owner)
+						{
+							return false;
+						}
 						result.blocked = true;
 					}
 					if (lockInfo->sharedOwner.Count() > 0)
@@ -60,8 +65,7 @@ LockManager
 		bool LockManager::ReleaseObjectLock(
 			Ptr<TInfo> lockInfo,
 			const LockOwner& owner,
-			LockTargetAccess access,
-			const LockResult& result
+			LockTargetAccess access
 			)
 		{
 			switch (access)
@@ -78,8 +82,7 @@ LockManager
 				break;
 			case LockTargetAccess::Exclusive:
 				{
-					if (lockInfo->xWriteOwner.transaction.index != owner.transaction.index ||
-						lockInfo->xWriteOwner.task.index != owner.task.index)
+					if (lockInfo->xWriteOwner != owner)
 					{
 						return false;
 					}
@@ -116,6 +119,42 @@ LockManager
 			}
 
 			return true;
+		}
+
+
+		bool LockManager::AddPendingLock(const LockOwner& owner, const LockTarget& target)
+		{
+			vint index = pendingLocks.Keys().IndexOf(owner.transaction.index);
+			if (index !=-1)
+			{
+				FOREACH(Ptr<PendingLockInfo>, info, pendingLocks.GetByIndex(index))
+				{
+					if (info->owner == owner && info->target == target)
+					{
+						return false;
+					}
+				}
+			}
+
+			pendingLocks.Add(owner.transaction.index, new PendingLockInfo(owner, target));
+			return true;
+		}
+
+		bool LockManager::RemovePendingLock(const LockOwner& owner, const LockTarget& target)
+		{
+			vint index = pendingLocks.Keys().IndexOf(owner.transaction.index);
+			if (index != -1)
+			{
+				FOREACH(Ptr<PendingLockInfo>, info, pendingLocks.GetByIndex(index))
+				{
+					if (info->owner == owner && info->target == target)
+					{
+						pendingLocks.Remove(owner.transaction.index, info.Obj());
+						return true;
+					}
+				}	
+			}
+			return false;
 		}
 
 		LockManager::LockManager(BufferManager* _bm)
@@ -219,7 +258,15 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Table:
-					return AcquireObjectLock(tableLockInfo, owner, target.access, result);
+					if(!AcquireObjectLock(tableLockInfo, owner, target.access, result))
+					{
+						return false;
+					}
+					if (result.blocked && !AddPendingLock(owner, target))
+					{
+						return false;
+					}
+					return true;
 				case LockTargetType::Page:
 					case LockTargetType::Row:
 					return false;
@@ -229,7 +276,7 @@ LockManager
 			return false;
 		}
 
-		bool LockManager::ReleaseLock(const LockOwner& owner, const LockTarget& target, const LockResult& result)
+		bool LockManager::ReleaseLock(const LockOwner& owner, const LockTarget& target)
 		{
 			if (!CheckInput(owner, target)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
@@ -252,7 +299,7 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Table:
-					return ReleaseObjectLock(tableLockInfo, owner, target.access, result);
+					return ReleaseObjectLock(tableLockInfo, owner, target.access) || RemovePendingLock(owner, target);
 				case LockTargetType::Page:
 				case LockTargetType::Row:
 					return false;

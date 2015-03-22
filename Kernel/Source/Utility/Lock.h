@@ -28,6 +28,16 @@ namespace vl
 				,task(_task)
 			{
 			}
+
+			static bool Compare(const LockOwner& a, const LockOwner& b)
+			{
+				return a.transaction.index == b.transaction.index
+					&& a.task.index == b.task.index
+					;
+			}
+
+			bool operator==(const LockOwner& b)const { return Compare(*this, b) == true; }
+			bool operator!=(const LockOwner& b)const { return Compare(*this, b) == true; }
 		};
 
 		enum class LockTargetType
@@ -80,6 +90,22 @@ namespace vl
 				,address(_address)
 			{
 			}
+
+			static bool Compare(const LockTarget& a, const LockTarget& b)
+			{
+				return a.type == b.type
+					&& a.access == b.access
+					&& a.table.index == b.table.index
+					&& (
+						(a.type == LockTargetType::Table) ||
+						(a.type == LockTargetType::Page && a.page.index == b.page.index) ||
+						(a.type == LockTargetType::Row && a.address.index == b.address.index)
+					   )
+					;
+			}
+
+			bool operator==(const LockTarget& b)const { return Compare(*this, b) == true; }
+			bool operator!=(const LockTarget& b)const { return Compare(*this, b) == true; }
 		};
 
 		struct LockResult
@@ -140,31 +166,39 @@ namespace vl
 				}
 			};
 
-			struct PageLockInfo : ObjectLockInfo<BufferPage>
-			{
-			};
-
-			typedef collections::Dictionary<BufferPage::IndexType, Ptr<PageLockInfo>>		PageLockInfoMap;
-
 			struct TableLockInfo : ObjectLockInfo<BufferTable>
 			{
-				PageLockInfoMap	pageLocks;
-
 				TableLockInfo(const BufferTable& table)
 					:ObjectLockInfo<BufferTable>(table)
 				{
 				}
 			};
 
+			struct PendingLockInfo
+			{
+				LockOwner		owner;
+				LockTarget		target;
+
+				PendingLockInfo(const LockOwner& _owner, const LockTarget& _target)
+					:owner(_owner)
+					,target(_target)
+				{
+				}
+			};
+
 			typedef collections::Array<Ptr<TableLockInfo>>									TableLockArray;
+			typedef collections::Group<BufferTransaction::IndexType, Ptr<PendingLockInfo>>	PendingLockGroup;
 
 			TableLockArray		tableLocks;
+			PendingLockGroup	pendingLocks;
 
 			template<typename TInfo>
 			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access, LockResult& result);
 			template<typename TInfo>
-			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access, const LockResult& result);
+			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access);
 			bool				CheckInput(const LockOwner& owner, const LockTarget& target);
+			bool				AddPendingLock(const LockOwner& owner, const LockTarget& target);
+			bool				RemovePendingLock(const LockOwner& owner, const LockTarget& target);
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
@@ -175,7 +209,7 @@ namespace vl
 			bool				UnregisterTransaction(BufferTransaction trans);
 
 			bool				AcquireLock(const LockOwner& owner, const LockTarget& target, LockResult& result);
-			bool				ReleaseLock(const LockOwner& owner, const LockTarget& target, const LockResult& result);
+			bool				ReleaseLock(const LockOwner& owner, const LockTarget& target);
 
 			BufferTask			PickTask(LockResult& result);
 			void				DetectDeadlock(DeadlockInfo::List& infos);
