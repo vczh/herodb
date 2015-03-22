@@ -49,7 +49,11 @@ namespace vl
 
 		enum class LockTargetAccess
 		{
+			IntentShared,
 			Shared,
+			Update,
+			IntentExclusive,
+			SharedIntentExclusive,
 			Exclusive,
 		};
 
@@ -156,9 +160,8 @@ namespace vl
 
 				SpinLock		lock;
 				T				object;
-				LockOwnerGroup	sharedOwner;
-				volatile vint	xReadCounter = 0;
-				LockOwner		xWriteOwner;
+				LockOwnerGroup	sharedOwners;
+				LockOwner		exclusiveOwner;
 
 				ObjectLockInfo(const T& _object)
 					:object(_object)

@@ -21,43 +21,42 @@ LockManager
 			{
 			case LockTargetAccess::Shared:
 				{
-					vint index = lockInfo->sharedOwner.Keys().IndexOf(owner.transaction.index);
+					vint index = lockInfo->sharedOwners.Keys().IndexOf(owner.transaction.index);
 					if (index != -1)
 					{
-						if (lockInfo->sharedOwner.GetByIndex(index).Contains(owner.task.index))
+						if (lockInfo->sharedOwners.GetByIndex(index).Contains(owner.task.index))
 						{
 							return false;
 						}
 					}
 
-					if (lockInfo->xReadCounter > 0 || lockInfo->xWriteOwner.transaction.IsValid())
+					if (lockInfo->exclusiveOwner.transaction.IsValid())
 					{
 						result.blocked = true;
 						return true;
 					}
-					lockInfo->sharedOwner.Add(owner.transaction.index, owner.task.index);
+					lockInfo->sharedOwners.Add(owner.transaction.index, owner.task.index);
 					result.blocked = false;
 					return true;
 				}
 				break;
 			case LockTargetAccess::Exclusive:
 				{
-					if (lockInfo->xWriteOwner.transaction.IsValid())
+					if (lockInfo->exclusiveOwner.transaction.IsValid())
 					{
-						if (lockInfo->xWriteOwner == owner)
+						if (lockInfo->exclusiveOwner == owner)
 						{
 							return false;
 						}
 					}
 
-					if (lockInfo->xReadCounter > 0 ||
-						lockInfo->xWriteOwner.transaction.IsValid() ||
-						lockInfo->sharedOwner.Count() > 0)
+					if (lockInfo->exclusiveOwner.transaction.IsValid() ||
+						lockInfo->sharedOwners.Count() > 0)
 					{
 						result.blocked = true;
 						return true;
 					}
-					lockInfo->xWriteOwner = owner;
+					lockInfo->exclusiveOwner = owner;
 					return true;
 				}
 				break;
@@ -76,21 +75,21 @@ LockManager
 			{
 			case LockTargetAccess::Shared:
 				{
-					vint index = lockInfo->sharedOwner.Keys().IndexOf(owner.transaction.index);
+					vint index = lockInfo->sharedOwners.Keys().IndexOf(owner.transaction.index);
 					if (index == -1)
 					{
 						return false;
 					}
-					return lockInfo->sharedOwner.Remove(owner.transaction.index, owner.task.index);
+					return lockInfo->sharedOwners.Remove(owner.transaction.index, owner.task.index);
 				}
 				break;
 			case LockTargetAccess::Exclusive:
 				{
-					if (lockInfo->xWriteOwner != owner)
+					if (lockInfo->exclusiveOwner != owner)
 					{
 						return false;
 					}
-					lockInfo->xWriteOwner = LockOwner();
+					lockInfo->exclusiveOwner = LockOwner();
 					return true;
 				}
 				break;
@@ -274,24 +273,6 @@ LockManager
 					return true;
 				case LockTargetType::Page:
 					{
-						switch (target.access)
-						{
-						case LockTargetAccess::Shared:
-							{
-								if (!AcquireObjectLock(tableLockInfo, owner, target.access, result))
-								{
-									return false;
-								}
-								if (result.blocked)
-								{
-									return AddPendingLock(owner, target);
-								}
-							}
-							break;
-						case LockTargetAccess::Exclusive:
-							INCRC(&tableLockInfo->xReadCounter);
-							break;
-						}
 						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
 						if (index == -1)
 						{
@@ -316,22 +297,6 @@ LockManager
 				case LockTargetType::Page:
 					{
 						bool acquired = AcquireObjectLock(pageLockInfo, owner, target.access, result);
-						if (!acquired || result.blocked)
-						{
-							switch (target.access)
-							{
-							case LockTargetAccess::Shared:
-								SPIN_LOCK(tableLockInfo->lock)
-								{
-									ReleaseObjectLock(tableLockInfo, owner, target.access);
-								}
-								break;
-							case LockTargetAccess::Exclusive:
-								DECRC(&tableLockInfo->xReadCounter);
-								break;
-							}
-						}
-
 						if (!acquired)
 						{
 							return false;
@@ -402,18 +367,6 @@ LockManager
 				case LockTargetType::Page:
 					if(ReleaseObjectLock(pageLockInfo, owner, target.access))
 					{
-						switch (target.access)
-						{
-						case LockTargetAccess::Shared:
-							SPIN_LOCK(tableLockInfo->lock)
-							{
-								ReleaseObjectLock(tableLockInfo, owner, target.access);
-							}
-							break;
-						case LockTargetAccess::Exclusive:
-							DECRC(&tableLockInfo->xReadCounter);
-							break;
-						}
 						return true;
 					}
 					else
