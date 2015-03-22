@@ -39,9 +39,8 @@ namespace vl
 
 		enum class LockTargetAccess
 		{
-			SharedRead,
-			ExclusiveRead,
-			ExclusiveWrite,
+			Shared,
+			Exclusive,
 		};
 
 		struct LockTarget

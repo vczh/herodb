@@ -70,9 +70,8 @@ TEST_CASE(Utility_Lock_Registering)
 #define TABLE LockTargetType::Table
 #define PAGE LockTargetType::Page
 #define ROW LockTargetType::Row
-#define SHARED LockTargetAccess::SharedRead
-#define XREAD LockTargetAccess::ExclusiveRead
-#define XWRITE LockTargetAccess::ExclusiveWrite
+#define SLOCK LockTargetAccess::Shared
+#define XLOCK LockTargetAccess::Exclusive
 
 TEST_CASE(Utility_Lock_Table)
 {
@@ -83,22 +82,22 @@ TEST_CASE(Utility_Lock_Table)
 	
 	// Lock invalid table will fail
 	lo = {transA, taskA};
-	lt = {SHARED, BufferTable::Invalid()}; 
+	lt = {SLOCK, BufferTable::Invalid()}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Lock using invalid transaction will fail
 	lo = {BufferTransaction::Invalid(), taskA};
-	lt = {SHARED, tableA}; 
+	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Lock using invalid task will fail
 	lo = {transA, BufferTask::Invalid()};
-	lt = {SHARED, tableA}; 
+	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Unlock unexisting lock will fail
 	lo = {transA, taskA};
-	lt = {SHARED, tableA}; 
+	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt, lr) == false);
 
 	// Lock shared using valid arguments will success
@@ -107,13 +106,7 @@ TEST_CASE(Utility_Lock_Table)
 	
 	// Unlock existing lock will success
 	
-	// Lock exclusive read using valid arguments will success
-	
-	// Lock any access twice will fail
-	
-	// Unlock existing lock will success
-	
-	// Lock exclusive write using valid arguments will success
+	// Lock exclusive using valid arguments will success
 	
 	// Lock any access twice will fail
 	
@@ -121,27 +114,16 @@ TEST_CASE(Utility_Lock_Table)
 	
 	// Lock shared and shared will success
 	
-	// Lock shared and exclusive read will fail
-	
-	// Lock shared and exclusive write will fail
+	// Lock shared and exclusive will fail
 	
 	// Unlock existing lock will success
 	
-	// Lock exclusive read and shared will fail
+	// Lock exclusive and shared will fail
 	
-	// Lock exclusive read and exclusive read will success
-	
-	// Lock exclusive read and exclusive write will fail
+	// Lock exclusive and exclusive will success
 	
 	// Unlock existing lock will success
 	
-	// Lock exclusive write and shared will fail
-	
-	// Lock exclusive write and exclusive read will fail
-	
-	// Lock exvlusive write and exclusive write will fail
-	
-	// Unlock existing lock will success
 }
 
 TEST_CASE(Utility_Lock_Page)
