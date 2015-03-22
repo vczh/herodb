@@ -40,17 +40,12 @@ namespace vl
 				return IdObject();
 			}
 
-			static T Compare(IdObject a, IdObject b)
-			{
-				return a.index - b.index;
-			}
-
-			bool operator==(IdObject b)const { return Compare(*this, b) == 0; }
-			bool operator!=(IdObject b)const { return Compare(*this, b) != 0; }
-			bool operator< (IdObject b)const { return Compare(*this, b) <  0; }
-			bool operator<=(IdObject b)const { return Compare(*this, b) <= 0; }
-			bool operator> (IdObject b)const { return Compare(*this, b) >  0; }
-			bool operator>=(IdObject b)const { return Compare(*this, b) >= 0; }
+			bool operator==(IdObject b)const { return index == b.index; }
+			bool operator!=(IdObject b)const { return index != b.index; }
+			bool operator< (IdObject b)const { return index <  b.index; }
+			bool operator<=(IdObject b)const { return index <= b.index; }
+			bool operator> (IdObject b)const { return index >  b.index; }
+			bool operator>=(IdObject b)const { return index >= b.index; }
 		};
 
 		typedef IdObject<vint32_t,	0>	BufferSource;
@@ -66,6 +61,9 @@ namespace vl
 			return size + (divisor - (size % divisor)) % divisor;
 		}
 	}
+	
+	template<typename T, vint Tag>
+	struct POD<database::IdObject<T, Tag>>{static const bool Result = true;}; 
 }
 
 #endif

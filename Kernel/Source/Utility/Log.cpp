@@ -449,6 +449,7 @@ LogManager
 			{
 				return activeTransactions.Keys().Contains(transaction);
 			}
+			CHECK_ERROR(false, L"vl::database::LogManager::IsActive(BufferTransaction)#Internal error: Should not reach here.");
 		}
 
 		Ptr<ILogWriter> LogManager::OpenLogItem(BufferTransaction transaction)
@@ -464,6 +465,7 @@ LogManager
 				desc->writer = new LogWriter(this, transaction);
 				return desc->writer;
 			}
+			CHECK_ERROR(false, L"vl::database::LogManager::OpenLogItem(BufferTransaction)#Internal error: Should not reach here.");
 		}
 
 		Ptr<ILogReader> LogManager::EnumLogItem(BufferTransaction transaction)

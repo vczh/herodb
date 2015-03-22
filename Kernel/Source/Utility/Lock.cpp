@@ -72,6 +72,7 @@ LockManager
 			case LockTargetType::Row:
 				if (!target.address.IsValid()) return false;
 				break;
+			default:;
 			}
 
 			if (!transactions.Keys().Contains(owner.transaction.index))
@@ -270,6 +271,7 @@ LockManager
 					}
 				case LockTargetType::Row:
 					return false;
+				default:;
 				}
 			}
 
@@ -332,6 +334,7 @@ LockManager
 					}
 				case LockTargetType::Row:
 					return false;
+				default:;
 				}
 			}
 			return false;
