@@ -86,11 +86,172 @@ LockManager
 
 		bool LockManager::AcquireLock(const LockOwner& owner, const LockTarget& target, LockResult& result)
 		{
+			if (!owner.transaction.IsValid()) return false;
+			if (!owner.task.IsValid()) return false;
+			if (!target.table.IsValid()) return false;
+			switch (target.type)
+			{
+			case LockTargetType::Page:
+				if (!target.page.IsValid()) return false;
+				break;
+			case LockTargetType::Row:
+				if (!target.address.IsValid()) return false;
+				break;
+			}
+
+			Ptr<TableLockInfo> tableLockInfo;
+			SPIN_LOCK(lock)
+			{
+				if (!transactions.Keys().Contains(owner.transaction.index))
+				{
+					return false;
+				}
+				if (!tables.Keys().Contains(target.table.index))
+				{
+					return false;
+				}
+
+				if (tableLocks.Count() <= target.table.index)
+				{
+					tableLocks.Resize(target.table.index + 1);
+				}
+
+				tableLockInfo = tableLocks[target.table.index];
+				if (!tableLockInfo)
+				{
+					tableLockInfo = new TableLockInfo;
+					tableLockInfo->table = target.table;
+					tableLocks[target.table.index] = tableLockInfo;
+				}
+			}
+
+			SPIN_LOCK(tableLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Table:
+					{
+						switch (target.access)
+						{
+						case LockTargetAccess::Shared:
+							{
+								if (tableLockInfo->tableExclusiveOwner.transaction.IsValid())
+								{
+									return false;
+								}
+								vint index = tableLockInfo->tableSharedOwner.Keys().IndexOf(owner.transaction.index);
+								if (index != -1)
+								{
+									if (tableLockInfo->tableSharedOwner.GetByIndex(index).Contains(owner.task.index))
+									{
+										return false;
+									}
+								}
+								tableLockInfo->tableSharedOwner.Add(owner.transaction.index, owner.task.index);
+								return true;
+							}
+							break;
+						case LockTargetAccess::Exclusive:
+							{
+								if (tableLockInfo->tableExclusiveOwner.transaction.IsValid())
+								{
+									return false;
+								}
+								if (tableLockInfo->tableSharedOwner.Count() > 0)
+								{
+									return false;
+								}
+								tableLockInfo->tableExclusiveOwner = owner;
+								return true;
+							}
+							break;
+						}
+					}
+					break;
+				case LockTargetType::Page:
+				case LockTargetType::Row:
+					return false;
+				}
+			}
 			return false;
 		}
 
 		bool LockManager::ReleaseLock(const LockOwner& owner, const LockTarget& target, const LockResult& result)
 		{
+			if (!owner.transaction.IsValid()) return false;
+			if (!owner.task.IsValid()) return false;
+			if (!target.table.IsValid()) return false;
+			switch (target.type)
+			{
+			case LockTargetType::Page:
+				if (!target.page.IsValid()) return false;
+				break;
+			case LockTargetType::Row:
+				if (!target.address.IsValid()) return false;
+				break;
+			}
+
+			Ptr<TableLockInfo> tableLockInfo;
+			SPIN_LOCK(lock)
+			{
+				if (!transactions.Keys().Contains(owner.transaction.index))
+				{
+					return false;
+				}
+				if (!tables.Keys().Contains(target.table.index))
+				{
+					return false;
+				}
+
+				if (tableLocks.Count() <= target.table.index)
+				{
+					return false;
+				}
+
+				tableLockInfo = tableLocks[target.table.index];
+				if (!tableLockInfo)
+				{
+					return false;
+				}
+			}
+
+			SPIN_LOCK(tableLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Table:
+					{
+						switch (target.access)
+						{
+						case LockTargetAccess::Shared:
+							{
+								vint index = tableLockInfo->tableSharedOwner.Keys().IndexOf(owner.transaction.index);
+								if (index == -1)
+								{
+									return false;
+								}
+								return tableLockInfo->tableSharedOwner.Remove(owner.transaction.index, owner.task.index);
+							}
+							break;
+						case LockTargetAccess::Exclusive:
+							{
+								if (tableLockInfo->tableExclusiveOwner.transaction.index != owner.transaction.index ||
+									tableLockInfo->tableExclusiveOwner.task.index != owner.task.index)
+								{
+									return false;
+								}
+								tableLockInfo->tableExclusiveOwner = LockOwner();
+								return true;
+							}
+							break;
+						}
+					}
+					break;
+				case LockTargetType::Page:
+				case LockTargetType::Row:
+					return false;
+				}
+			}
 			return false;
 		}
 

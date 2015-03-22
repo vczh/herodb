@@ -119,6 +119,22 @@ namespace vl
 			SpinLock			lock;
 			TableMap			tables;
 			TransMap			transactions;
+
+		protected:
+			typedef collections::Group<BufferTransaction::IndexType, BufferTask::IndexType>	LockOwnerGroup;
+
+			struct TableLockInfo
+			{
+				SpinLock		lock;
+				BufferTable		table;
+				LockOwnerGroup	tableSharedOwner;
+				LockOwner		tableExclusiveOwner;
+			};
+
+			typedef collections::Array<Ptr<TableLockInfo>>									TableLockArray;
+
+			TableLockArray		tableLocks;
+
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
