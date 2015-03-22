@@ -166,8 +166,20 @@ namespace vl
 				}
 			};
 
+			struct PageLockInfo : ObjectLockInfo<BufferPage>
+			{
+				PageLockInfo(const BufferPage& page)
+					:ObjectLockInfo<BufferPage>(page)
+				{
+				}
+			};
+
+			typedef collections::Dictionary<BufferPage::IndexType, Ptr<PageLockInfo>>		PageLockMap;
+
 			struct TableLockInfo : ObjectLockInfo<BufferTable>
 			{
+				PageLockMap		pageLocks;
+
 				TableLockInfo(const BufferTable& table)
 					:ObjectLockInfo<BufferTable>(table)
 				{

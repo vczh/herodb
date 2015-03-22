@@ -239,6 +239,7 @@ LockManager
 		{
 			if (!CheckInput(owner, target)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
+			Ptr<PageLockInfo> pageLockInfo;
 
 			SPIN_LOCK(lock)
 			{
@@ -260,7 +261,7 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Table:
-					if(!AcquireObjectLock(tableLockInfo, owner, target.access, result))
+					if (!AcquireObjectLock(tableLockInfo, owner, target.access, result))
 					{
 						return false;
 					}
@@ -270,7 +271,39 @@ LockManager
 					}
 					return true;
 				case LockTargetType::Page:
-					case LockTargetType::Row:
+					{
+						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
+						if (index == -1)
+						{
+							pageLockInfo = new PageLockInfo(target.page);
+							tableLockInfo->pageLocks.Add(target.page.index, pageLockInfo);
+						}
+						else
+						{
+							pageLockInfo = tableLockInfo->pageLocks.Values()[index];
+						}
+					}
+					break;
+				case LockTargetType::Row:
+					return false;
+				}
+			}
+
+			SPIN_LOCK(pageLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Page:
+					if (!AcquireObjectLock(pageLockInfo, owner, target.access, result))
+					{
+						return false;
+					}
+					if (result.blocked && !AddPendingLock(owner, target))
+					{
+						return false;
+					}
+					return true;
+				case LockTargetType::Row:
 					return false;
 				}
 			}
@@ -282,6 +315,8 @@ LockManager
 		{
 			if (!CheckInput(owner, target)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
+			Ptr<PageLockInfo> pageLockInfo;
+			
 			SPIN_LOCK(lock)
 			{
 				if (tableLocks.Count() <= target.table.index)
@@ -303,6 +338,26 @@ LockManager
 				case LockTargetType::Table:
 					return ReleaseObjectLock(tableLockInfo, owner, target.access) || RemovePendingLock(owner, target);
 				case LockTargetType::Page:
+					{
+						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
+						if (index == -1)
+						{
+							return false;
+						}
+						pageLockInfo = tableLockInfo->pageLocks.Values()[index];
+					}
+					break;
+				case LockTargetType::Row:
+					return false;
+				}
+			}
+
+			SPIN_LOCK(pageLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Page:
+					return ReleaseObjectLock(pageLockInfo, owner, target.access) || RemovePendingLock(owner, target);
 				case LockTargetType::Row:
 					return false;
 				}
