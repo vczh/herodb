@@ -152,12 +152,12 @@ TEST_CASE(Utility_Lock_Table)
 	ltB = {SLOCK, tableA};
 	TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
 	TEST_ASSERT(lrA.blocked == false);
-	TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == false);
+	TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
 	TEST_ASSERT(lrB.blocked == true);
 	
 	// Lock exclusive and exclusive will block
 	lt = {XLOCK, tableA};
-	TEST_ASSERT(lm.AcquireLock(loB, lt, lr) == false);
+	TEST_ASSERT(lm.AcquireLock(loB, lt, lr) == true);
 	TEST_ASSERT(lr.blocked == true);
 	
 	// Unlock existing lock will success

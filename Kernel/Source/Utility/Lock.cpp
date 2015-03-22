@@ -48,10 +48,12 @@ LockManager
 							return false;
 						}
 						result.blocked = true;
+						return true;
 					}
 					if (lockInfo->sharedOwner.Count() > 0)
 					{
-						return false;
+						result.blocked = true;
+						return true;
 					}
 					lockInfo->xWriteOwner = owner;
 					return true;

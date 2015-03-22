@@ -37,7 +37,7 @@ namespace vl
 			}
 
 			bool operator==(const LockOwner& b)const { return Compare(*this, b) == true; }
-			bool operator!=(const LockOwner& b)const { return Compare(*this, b) == true; }
+			bool operator!=(const LockOwner& b)const { return Compare(*this, b) != true; }
 		};
 
 		enum class LockTargetType
@@ -105,7 +105,7 @@ namespace vl
 			}
 
 			bool operator==(const LockTarget& b)const { return Compare(*this, b) == true; }
-			bool operator!=(const LockTarget& b)const { return Compare(*this, b) == true; }
+			bool operator!=(const LockTarget& b)const { return Compare(*this, b) != true; }
 		};
 
 		struct LockResult
