@@ -76,11 +76,11 @@ TEST_CASE_SOURCE(AllocateFreePage)
 
 	auto page1 = bm.AllocatePage(source);
 	TEST_ASSERT(page1.IsValid());
-	TEST_ASSERT(page1.index != indexPage.index);
+	TEST_ASSERT(page1 != indexPage);
 	auto page2 = bm.AllocatePage(source);
 	TEST_ASSERT(page2.IsValid());
-	TEST_ASSERT(page2.index != page1.index);
-	TEST_ASSERT(page2.index != indexPage.index);
+	TEST_ASSERT(page2 != page1);
+	TEST_ASSERT(page2 != indexPage);
 
 	auto addr0 = bm.LockPage(source, indexPage);
 	TEST_ASSERT(addr0 != nullptr);
@@ -105,7 +105,7 @@ TEST_CASE_SOURCE(AllocateFreePage)
 	TEST_ASSERT(bm.UnlockPage(source, page2, addr2, PersistanceType::NoChanging) == true);
 
 	auto page3 = bm.AllocatePage(source);
-	TEST_ASSERT(page3.index == page1.index);
+	TEST_ASSERT(page3 == page1);
 	auto addr3 = bm.LockPage(source, page3);
 	TEST_ASSERT(addr3 != nullptr);
 
@@ -209,6 +209,6 @@ TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
 		console::Console::WriteLine(L" => page " + itow(page.index) + L", expecting " + itow(expecting.index));
 
 		if (!page.IsValid()) throw 0;
-		if (page.index != expecting.index) throw 0;
+		if (page != expecting) throw 0;
 	}
 }

@@ -63,7 +63,7 @@ LogManager::LogWriter
 			if (!opening) return false;
 			SPIN_LOCK(log->lock)
 			{
-				auto desc = log->activeTransactions[trans.index];
+				auto desc = log->activeTransactions[trans];
 				vint numberCount = desc->firstItem.IsValid() ? 3 : 4;
 
 				vuint64_t written = 0;
@@ -140,14 +140,14 @@ LogManager::LogReader
 			,trans(_trans)
 			,item(BufferPointer::Invalid())
 		{
-			vint index = log->activeTransactions.Keys().IndexOf(trans.index);
+			vint index = log->activeTransactions.Keys().IndexOf(trans);
 			if (index == -1)
 			{
 				item = log->ReadAddressItem(trans);
 			}
 			else
 			{
-				auto desc = log->activeTransactions[trans.index];
+				auto desc = log->activeTransactions[trans];
 				item = desc->firstItem;
 			}
 
@@ -423,7 +423,7 @@ LogManager
 				desc->firstItem = BufferPointer::Invalid();
 				desc->lastItem = BufferPointer::Invalid();
 
-				activeTransactions.Add(trans.index, desc);
+				activeTransactions.Add(trans, desc);
 			}
 			return trans;
 		}
@@ -432,13 +432,13 @@ LogManager
 		{
 			SPIN_LOCK(lock)
 			{
-				auto index = activeTransactions.Keys().IndexOf(transaction.index);
+				auto index = activeTransactions.Keys().IndexOf(transaction);
 				if (index == -1) return false;
 
 				auto desc = activeTransactions.Values()[index];
 				if (desc->writer && desc->writer->IsOpening()) return false;
 
-				activeTransactions.Remove(transaction.index);
+				activeTransactions.Remove(transaction);
 			}
 			return true;
 		}
@@ -447,7 +447,7 @@ LogManager
 		{
 			SPIN_LOCK(lock)
 			{
-				return activeTransactions.Keys().Contains(transaction.index);
+				return activeTransactions.Keys().Contains(transaction);
 			}
 		}
 
@@ -455,7 +455,7 @@ LogManager
 		{
 			SPIN_LOCK(lock)
 			{
-				auto index = activeTransactions.Keys().IndexOf(transaction.index);
+				auto index = activeTransactions.Keys().IndexOf(transaction);
 				if (index == -1) return nullptr;
 
 				auto desc = activeTransactions.Values()[index];
@@ -470,7 +470,7 @@ LogManager
 		{
 			SPIN_LOCK(lock)
 			{
-				if (activeTransactions.Keys().Contains(transaction.index))
+				if (activeTransactions.Keys().Contains(transaction))
 				{
 					return new LogReader(this, transaction);
 				}
@@ -482,7 +482,7 @@ LogManager
 		{
 			SPIN_LOCK(lock)
 			{
-				if (transaction.index < usedTransactionCount && !activeTransactions.Keys().Contains(transaction.index))
+				if (transaction.index < usedTransactionCount && !activeTransactions.Keys().Contains(transaction))
 				{
 					return new LogReader(this, transaction);
 				}

@@ -45,7 +45,7 @@ namespace vl
 
 		class LogManager : public Object
 		{
-			typedef collections::Dictionary<BufferTransaction::IndexType, Ptr<LogTransDesc>>		TransMap;
+			typedef collections::Dictionary<BufferTransaction, Ptr<LogTransDesc>>					TransMap;
 			typedef collections::List<BufferPage>													PageList;
 
 		private:
