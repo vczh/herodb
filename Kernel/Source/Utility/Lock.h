@@ -123,18 +123,48 @@ namespace vl
 		protected:
 			typedef collections::Group<BufferTransaction::IndexType, BufferTask::IndexType>	LockOwnerGroup;
 
-			struct TableLockInfo
+			template<typename T>
+			struct ObjectLockInfo
 			{
+				typedef T		ObjectType;
+
 				SpinLock		lock;
-				BufferTable		table;
-				LockOwnerGroup	tableSharedOwner;
-				LockOwner		tableExclusiveOwner;
+				T				object;
+				LockOwnerGroup	sharedOwner;
+				volatile vint	xWriteCounter = 0;
+				LockOwner		xWriteOwner;
+
+				ObjectLockInfo(const T& _object)
+					:object(_object)
+				{
+				}
+			};
+
+			struct PageLockInfo : ObjectLockInfo<BufferPage>
+			{
+			};
+
+			typedef collections::Dictionary<BufferPage::IndexType, Ptr<PageLockInfo>>		PageLockInfoMap;
+
+			struct TableLockInfo : ObjectLockInfo<BufferTable>
+			{
+				PageLockInfoMap	pageLocks;
+
+				TableLockInfo(const BufferTable& table)
+					:ObjectLockInfo<BufferTable>(table)
+				{
+				}
 			};
 
 			typedef collections::Array<Ptr<TableLockInfo>>									TableLockArray;
 
 			TableLockArray		tableLocks;
 
+			template<typename TInfo>
+			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access, LockResult& result);
+			template<typename TInfo>
+			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access, const LockResult& result);
+			bool				CheckInput(const LockOwner& owner, const LockTarget& target);
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();

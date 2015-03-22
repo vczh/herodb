@@ -62,6 +62,7 @@ TEST_CASE(Utility_Lock_Registering)
 	BufferTable tableA{1}, tableB{2};						\
 	BufferTransaction transA{1}, transB{2};					\
 	BufferTask taskA{1}, taskB{2};							\
+	BufferPage pageA{1}, pageB{2};							\
 	TEST_ASSERT(lm.RegisterTable(tableA, source) == true);	\
 	TEST_ASSERT(lm.RegisterTable(tableB, source) == true);	\
 	TEST_ASSERT(lm.RegisterTransaction(transA, 0) == true);	\
@@ -100,60 +101,69 @@ TEST_CASE(Utility_Lock_Table)
 	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt, lr) == false);
 
-	// Lock shared using valid arguments will success
+	// Lock shared using valid arguments will unblock
 	lo = {transA, taskA};
 	lt = {SLOCK, tableA};
-	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == true);
+	TEST_ASSERT(lm.AcquireLock(lo, lt, lrA) == true);
+	TEST_ASSERT(lrA.blocked == false);
 	
 	// Lock any access twice will fail
-	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
+	TEST_ASSERT(lm.AcquireLock(lo, lt, lrB) == false);
 	
 	// Unlock existing lock will success
-	TEST_ASSERT(lm.ReleaseLock(lo, lt, lr) == true);
+	TEST_ASSERT(lm.ReleaseLock(lo, lt, lrA) == true);
 	
-	// Lock exclusive using valid arguments will success
+	// Lock exclusive using valid arguments will unblock
 	lo = {transA, taskA};
 	lt = {XLOCK, tableA};
-	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == true);
+	TEST_ASSERT(lm.AcquireLock(lo, lt, lrA) == true);
+	TEST_ASSERT(lrA.blocked == false);
 	
-	// Lock any access twice will fail
-	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
+	// Lock any access twice will will fail
+	TEST_ASSERT(lm.AcquireLock(lo, lt, lrB) == false);
 	
 	// Unlock existing lock will success
-	TEST_ASSERT(lm.ReleaseLock(lo, lt, lr) == true);
+	TEST_ASSERT(lm.ReleaseLock(lo, lt, lrA) == true);
 	
-	// Lock shared and shared will success
+	// Lock shared and shared will unblock
 	loA = {transA, taskA};
 	loB = {transB, taskB};
 	ltA = {SLOCK, tableA};
 	ltB = {SLOCK, tableA};
 	TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+	TEST_ASSERT(lrA.blocked == false);
 	TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
+	TEST_ASSERT(lrB.blocked == false);
 	
-	// Lock shared and exclusive will fail
+	// Lock shared and exclusive will block
 	lt = {XLOCK, tableA};
-	TEST_ASSERT(lm.AcquireLock(loB, lt, lrB) == false);
+	TEST_ASSERT(lm.AcquireLock(loB, lt, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
 	
 	// Unlock existing lock will success
 	TEST_ASSERT(lm.ReleaseLock(loA, ltA, lrA) == true);
 	TEST_ASSERT(lm.ReleaseLock(loB, ltB, lrB) == true);
+	TEST_ASSERT(lm.ReleaseLock(loB, lt, lr) == true);
 	
-	// Lock exclusive and shared will fail
+	// Lock exclusive and shared will block
 	loA = {transA, taskA};
 	loB = {transB, taskB};
 	ltA = {XLOCK, tableA};
 	ltB = {SLOCK, tableA};
 	TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+	TEST_ASSERT(lrA.blocked == false);
 	TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == false);
+	TEST_ASSERT(lrB.blocked == true);
 	
-	// Lock exclusive and exclusive will success
+	// Lock exclusive and exclusive will block
 	lt = {XLOCK, tableA};
-	TEST_ASSERT(lm.AcquireLock(loB, lt, lrB) == false);
+	TEST_ASSERT(lm.AcquireLock(loB, lt, lr) == false);
+	TEST_ASSERT(lr.blocked == true);
 	
 	// Unlock existing lock will success
 	TEST_ASSERT(lm.ReleaseLock(loA, ltA, lrA) == true);
-	TEST_ASSERT(lm.ReleaseLock(loB, ltB, lrB) == false);
-	
+	TEST_ASSERT(lm.ReleaseLock(loB, ltB, lrB) == true);
+	TEST_ASSERT(lm.ReleaseLock(loB, lt, lr) == true);
 }
 
 TEST_CASE(Utility_Lock_Page)
