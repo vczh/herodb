@@ -22,7 +22,7 @@ TEST_CASE(Utility_Log_TransactionWithNoItem)
 
 	auto reader = log.EnumLogItem(trans);
 	TEST_ASSERT(reader);
-	TEST_ASSERT(reader->GetTransaction().index == trans.index);
+	TEST_ASSERT(reader->GetTransaction() == trans);
 	TEST_ASSERT(!log.EnumInactiveLogItem(trans));
 	TEST_ASSERT(reader->NextItem() == false);
 
@@ -31,7 +31,7 @@ TEST_CASE(Utility_Log_TransactionWithNoItem)
 
 	reader = log.EnumInactiveLogItem(trans);
 	TEST_ASSERT(reader);
-	TEST_ASSERT(reader->GetTransaction().index == trans.index);
+	TEST_ASSERT(reader->GetTransaction() == trans);
 	TEST_ASSERT(!log.EnumLogItem(trans));
 	TEST_ASSERT(reader->NextItem() == false);
 }
@@ -54,7 +54,7 @@ TEST_CASE(Utility_Log_TransactionWithOneEmptyItem)
 	{
 		auto reader = log.EnumLogItem(trans);
 		TEST_ASSERT(reader);
-		TEST_ASSERT(reader->GetTransaction().index == trans.index);
+		TEST_ASSERT(reader->GetTransaction() == trans);
 		TEST_ASSERT(!log.EnumInactiveLogItem(trans));
 
 		TEST_ASSERT(reader->NextItem() == true);
@@ -68,7 +68,7 @@ TEST_CASE(Utility_Log_TransactionWithOneEmptyItem)
 	{
 		auto reader = log.EnumInactiveLogItem(trans);
 		TEST_ASSERT(reader);
-		TEST_ASSERT(reader->GetTransaction().index == trans.index);
+		TEST_ASSERT(reader->GetTransaction() == trans);
 		TEST_ASSERT(!log.EnumLogItem(trans));
 
 		TEST_ASSERT(reader->NextItem() == true);
@@ -99,7 +99,7 @@ TEST_CASE(Utility_Log_TransactionWithOneNonEmptyItem)
 	{
 		auto reader = log.EnumLogItem(trans);
 		TEST_ASSERT(reader);
-		TEST_ASSERT(reader->GetTransaction().index == trans.index);
+		TEST_ASSERT(reader->GetTransaction() == trans);
 		TEST_ASSERT(!log.EnumInactiveLogItem(trans));
 
 		TEST_ASSERT(reader->NextItem() == true);
@@ -115,7 +115,7 @@ TEST_CASE(Utility_Log_TransactionWithOneNonEmptyItem)
 	{
 		auto reader = log.EnumInactiveLogItem(trans);
 		TEST_ASSERT(reader);
-		TEST_ASSERT(reader->GetTransaction().index == trans.index);
+		TEST_ASSERT(reader->GetTransaction() == trans);
 		TEST_ASSERT(!log.EnumLogItem(trans));
 
 		TEST_ASSERT(reader->NextItem() == true);
@@ -155,7 +155,7 @@ TEST_CASE(Utility_Log_TransactionWithMultipleItems)
 	{
 		auto reader = log.EnumLogItem(trans);
 		TEST_ASSERT(reader);
-		TEST_ASSERT(reader->GetTransaction().index == trans.index);
+		TEST_ASSERT(reader->GetTransaction() == trans);
 		TEST_ASSERT(!log.EnumInactiveLogItem(trans));
 		
 		for(vint i = 0; i < dataBlocks; i++)
@@ -175,7 +175,7 @@ TEST_CASE(Utility_Log_TransactionWithMultipleItems)
 	{
 		auto reader = log.EnumInactiveLogItem(trans);
 		TEST_ASSERT(reader);
-		TEST_ASSERT(reader->GetTransaction().index == trans.index);
+		TEST_ASSERT(reader->GetTransaction() == trans);
 		TEST_ASSERT(!log.EnumLogItem(trans));
 
 		for(vint i = 0; i < dataBlocks; i++)

@@ -111,7 +111,7 @@ BufferManager
 
 		BufferSource BufferManager::LoadMemorySource()
 		{
-			BufferSource source{(BufferSource::IndexType)INCRC(&usedSourceIndex)};
+			BufferSource source{(BufferSource::IndexType)INCRC(&usedSourceIndex) - 1};
 			Ptr<IBufferSource> bs = CreateMemorySource(source, &totalCachedPages, pageSize);
 			if (!bs)
 			{
@@ -128,7 +128,7 @@ BufferManager
 
 		BufferSource BufferManager::LoadFileSource(const WString& fileName, bool createNew)
 		{
-			BufferSource source{(BufferSource::IndexType)INCRC(&usedSourceIndex)};
+			BufferSource source{(BufferSource::IndexType)INCRC(&usedSourceIndex) - 1};
 			Ptr<IBufferSource> bs = CreateFileSource(source, &totalCachedPages, pageSize, fileName, createNew);
 			if (!bs)
 			{

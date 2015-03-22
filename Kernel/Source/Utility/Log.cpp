@@ -415,7 +415,7 @@ LogManager
 			BufferTransaction trans;
 			SPIN_LOCK(lock)
 			{
-				trans.index = INCRC(&usedTransactionCount);
+				trans.index = INCRC(&usedTransactionCount) - 1;
 				BufferPointer address = BufferPointer::Invalid();
 				WriteAddressItem(trans, address);
 
