@@ -49,17 +49,14 @@ BufferManager
 						for (vint i = 0; i < count; i++)
 						{
 							auto tuple = pages[i];
-							auto source = sources[tuple.f0.index];
+							auto source = sources[tuple.f0];
 							SPIN_LOCK(source->GetLock())
 							{
 								source->UnmapPage(tuple.f1);
 							}
 						}
 
-						if (totalCachedPages > cachePageCount)
-						{
-							throw 0;
-						}
+						CHECK_ERROR(totalCachedPages <= cachePageCount, L"vl::database::BufferManager::SwapCacheIfNecessary()#Internal error: failed to maintain totalCachedPages.");
 					}
 				}
 			}
@@ -123,7 +120,7 @@ BufferManager
 
 			SPIN_LOCK(lock)
 			{
-				sources.Add(source.index, bs);
+				sources.Add(source, bs);
 			}
 			SwapCacheIfNecessary();
 			return source;
@@ -140,7 +137,7 @@ BufferManager
 
 			SPIN_LOCK(lock)
 			{
-				sources.Add(source.index, bs);
+				sources.Add(source, bs);
 			}
 			SwapCacheIfNecessary();
 			return source;
@@ -150,7 +147,7 @@ BufferManager
 			Ptr<IBufferSource> BS;										\
 			SPIN_LOCK(lock)												\
 			{															\
-				vint index = sources.Keys().IndexOf((SOURCE).index);	\
+				vint index = sources.Keys().IndexOf(SOURCE);			\
 				if (index == -1) return FAILVALUE;						\
 				BS = sources.Values()[index];							\
 			}															\
@@ -161,10 +158,10 @@ BufferManager
 			Ptr<IBufferSource> bs;
 			SPIN_LOCK(lock)
 			{
-				vint index = sources.Keys().IndexOf(source.index);
+				vint index = sources.Keys().IndexOf(source);
 				if (index == -1) return false;
 				bs = sources.Values()[index];
-				sources.Remove(source.index);
+				sources.Remove(source);
 			}
 
 			SPIN_LOCK(bs->GetLock())

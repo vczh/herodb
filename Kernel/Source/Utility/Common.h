@@ -14,31 +14,51 @@ namespace vl
 {
 	namespace database
 	{
-#define DEFINE_INDEX_TYPE(NAME, TYPE)							\
-		struct NAME												\
-		{														\
-			typedef TYPE		IndexType;						\
-			TYPE				index;							\
-																\
-			bool IsValid()const									\
-			{													\
-				return index != ~(TYPE)0;						\
-			}													\
-																\
-			static NAME Invalid()								\
-			{													\
-				NAME source{~(TYPE)0};							\
-				return source;									\
-			}													\
-		}														\
+		template<typename T, vint Tag>
+		struct IdObject
+		{
+			typedef T			IndexType;
+			T					index;
 
-		DEFINE_INDEX_TYPE(BufferSource, vint32_t);
-		DEFINE_INDEX_TYPE(BufferPage, vuint64_t);
-		DEFINE_INDEX_TYPE(BufferPointer, vuint64_t);
-		DEFINE_INDEX_TYPE(BufferTransaction, vuint64_t);
-		DEFINE_INDEX_TYPE(BufferTable, vint32_t);
-		DEFINE_INDEX_TYPE(BufferTask, vuint64_t);
-#undef DEFINE_INDEX_TYPE
+			IdObject()
+				:index(~(T)0)
+			{
+			}
+
+			IdObject(T _index)
+				:index(_index)
+			{
+			}
+
+			bool IsValid()const
+			{
+				return index != ~(T)0;
+			}
+
+			static IdObject Invalid()
+			{
+				return IdObject();
+			}
+
+			static T Compare(IdObject a, IdObject b)
+			{
+				return a.index - b.index;
+			}
+
+			bool operator==(IdObject b)const { return Compare(*this, b) == 0; }
+			bool operator!=(IdObject b)const { return Compare(*this, b) != 0; }
+			bool operator< (IdObject b)const { return Compare(*this, b) <  0; }
+			bool operator<=(IdObject b)const { return Compare(*this, b) <= 0; }
+			bool operator> (IdObject b)const { return Compare(*this, b) >  0; }
+			bool operator>=(IdObject b)const { return Compare(*this, b) >= 0; }
+		};
+
+		typedef IdObject<vint32_t,	0>	BufferSource;
+		typedef IdObject<vuint64_t,	1>	BufferPage;
+		typedef IdObject<vuint64_t,	2>	BufferPointer;
+		typedef IdObject<vuint64_t,	3>	BufferTransaction;
+		typedef IdObject<vint32_t,	4>	BufferTable;
+		typedef IdObject<vuint64_t,	4>	BufferTask;
 
 		template<typename T>
 		T IntUpperBound(T size, T divisor)

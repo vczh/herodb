@@ -51,7 +51,7 @@ namespace vl
 
 		class BufferManager
 		{
-			typedef collections::Dictionary<BufferSource::IndexType, Ptr<IBufferSource>>	SourceMap;
+			typedef collections::Dictionary<BufferSource, Ptr<IBufferSource>>				SourceMap;
 		private:
 			vuint64_t			pageSize;
 			vuint64_t			cachePageCount;
