@@ -226,10 +226,12 @@ LockManager
 				case LockTargetType::Table:
 					if (AcquireObjectLock(tableLockInfo, owner, target.access))
 					{
+						result.blocked = false;
 						return true;
 					}
 					else
 					{
+						result.blocked = true;
 						return AddPendingLock(owner, target);
 					}
 				case LockTargetType::Page:
@@ -258,10 +260,12 @@ LockManager
 				case LockTargetType::Page:
 					if (AcquireObjectLock(pageLockInfo, owner, target.access))
 					{
+						result.blocked = false;
 						return true;
 					}
 					else
 					{
+						result.blocked = true;
 						return AddPendingLock(owner, target);
 					}
 				case LockTargetType::Row:

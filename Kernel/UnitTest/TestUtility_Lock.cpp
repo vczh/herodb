@@ -206,13 +206,30 @@ TEST_CASE(Utility_Lock_Page)
 	// Check unrelated lock
 	for (vint i = 0; i < LOCK_TYPES; i++)
 	{
-		ltA = {(LockTargetAccess)i, tableA, pageB};
+		ltA = {(LockTargetAccess)i, tableA, pageA};
 		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
 		TEST_ASSERT(lrA.blocked == false);
 
 		for (vint j = 0; j < LOCK_TYPES; j++)
 		{
 			ltB = {(LockTargetAccess)j, tableA, pageB};
+			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
+			TEST_ASSERT(lrB.blocked == false);
+			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
+		}
+
+		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
+	}
+
+	for (vint i = 0; i < LOCK_TYPES; i++)
+	{
+		ltA = {(LockTargetAccess)i, tableA, pageA};
+		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+		TEST_ASSERT(lrA.blocked == false);
+
+		for (vint j = 0; j < LOCK_TYPES; j++)
+		{
+			ltB = {(LockTargetAccess)j, tableB, pageA};
 			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
 			TEST_ASSERT(lrB.blocked == false);
 			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
