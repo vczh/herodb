@@ -21,11 +21,6 @@ LockManager
 			{
 			case LockTargetAccess::Shared:
 				{
-					if (lockInfo->xWriteOwner.transaction.IsValid())
-					{
-						result.blocked = true;
-						return true;
-					}
 					vint index = lockInfo->sharedOwner.Keys().IndexOf(owner.transaction.index);
 					if (index != -1)
 					{
@@ -33,6 +28,12 @@ LockManager
 						{
 							return false;
 						}
+					}
+
+					if (lockInfo->xReadCounter > 0 || lockInfo->xWriteOwner.transaction.IsValid())
+					{
+						result.blocked = true;
+						return true;
 					}
 					lockInfo->sharedOwner.Add(owner.transaction.index, owner.task.index);
 					result.blocked = false;
@@ -47,10 +48,11 @@ LockManager
 						{
 							return false;
 						}
-						result.blocked = true;
-						return true;
 					}
-					if (lockInfo->sharedOwner.Count() > 0)
+
+					if (lockInfo->xReadCounter > 0 ||
+						lockInfo->xWriteOwner.transaction.IsValid() ||
+						lockInfo->sharedOwner.Count() > 0)
 					{
 						result.blocked = true;
 						return true;
@@ -272,6 +274,24 @@ LockManager
 					return true;
 				case LockTargetType::Page:
 					{
+						switch (target.access)
+						{
+						case LockTargetAccess::Shared:
+							{
+								if (!AcquireObjectLock(tableLockInfo, owner, target.access, result))
+								{
+									return false;
+								}
+								if (result.blocked)
+								{
+									return AddPendingLock(owner, target);
+								}
+							}
+							break;
+						case LockTargetAccess::Exclusive:
+							INCRC(&tableLockInfo->xReadCounter);
+							break;
+						}
 						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
 						if (index == -1)
 						{
@@ -294,13 +314,36 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Page:
-					if (!AcquireObjectLock(pageLockInfo, owner, target.access, result))
 					{
-						return false;
-					}
-					if (result.blocked && !AddPendingLock(owner, target))
-					{
-						return false;
+						bool acquired = AcquireObjectLock(pageLockInfo, owner, target.access, result);
+						if (!acquired || result.blocked)
+						{
+							switch (target.access)
+							{
+							case LockTargetAccess::Shared:
+								SPIN_LOCK(tableLockInfo->lock)
+								{
+									ReleaseObjectLock(tableLockInfo, owner, target.access);
+								}
+								break;
+							case LockTargetAccess::Exclusive:
+								DECRC(&tableLockInfo->xReadCounter);
+								break;
+							}
+						}
+
+						if (!acquired)
+						{
+							return false;
+						}
+						else if (result.blocked)
+						{
+							return AddPendingLock(owner, target);
+						}
+						else
+						{
+							return true;
+						}
 					}
 					return true;
 				case LockTargetType::Row:
@@ -357,7 +400,26 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Page:
-					return ReleaseObjectLock(pageLockInfo, owner, target.access) || RemovePendingLock(owner, target);
+					if(ReleaseObjectLock(pageLockInfo, owner, target.access))
+					{
+						switch (target.access)
+						{
+						case LockTargetAccess::Shared:
+							SPIN_LOCK(tableLockInfo->lock)
+							{
+								ReleaseObjectLock(tableLockInfo, owner, target.access);
+							}
+							break;
+						case LockTargetAccess::Exclusive:
+							DECRC(&tableLockInfo->xReadCounter);
+							break;
+						}
+						return true;
+					}
+					else
+					{
+						return RemovePendingLock(owner, target);
+					}
 				case LockTargetType::Row:
 					return false;
 				}

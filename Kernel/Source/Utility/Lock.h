@@ -157,7 +157,7 @@ namespace vl
 				SpinLock		lock;
 				T				object;
 				LockOwnerGroup	sharedOwner;
-				volatile vint	xWriteCounter = 0;
+				volatile vint	xReadCounter = 0;
 				LockOwner		xWriteOwner;
 
 				ObjectLockInfo(const T& _object)
