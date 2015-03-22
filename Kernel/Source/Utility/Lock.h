@@ -46,7 +46,7 @@ namespace vl
 		struct LockTarget
 		{
 			LockTargetType		type			= LockTargetType::Table;
-			LockTargetAccess	access			= LockTargetAccess::SharedRead;
+			LockTargetAccess	access			= LockTargetAccess::Shared;
 			BufferTable			table			= BufferTable::Invalid();
 			union
 			{

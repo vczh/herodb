@@ -3,7 +3,7 @@ folder VLPP = .
 	cpp = Vlpp.cpp
 
 folder DATABASE_BASIC = .
-	h = DatabaseVlppReference.h
+	h = DatabaseVlppReferences.h
 
 folder DATABASE_UTILITY = ./Utility
 	h = *.h
