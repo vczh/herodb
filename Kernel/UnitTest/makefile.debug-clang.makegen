@@ -15,8 +15,8 @@ targets
 
 map cpp : %.cpp
 	> o : obj %.o
-	clang++ -std=c++11 -g -fprofile-arcs -ftest-coverage -o $(OUT) -c $(IN)
+	clang++ -std=c++11 -g -o $(OUT) -c $(IN)
 
 link o :
 	> exe : bin UnitTest 
-	clang++ -std=c++11 -fprofile-arcs -pthread -o $(OUT) $(IN)
+	clang++ -std=c++11 -pthread -o $(OUT) $(IN)
