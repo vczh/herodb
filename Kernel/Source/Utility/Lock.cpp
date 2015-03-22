@@ -5,63 +5,47 @@ namespace vl
 	namespace database
 	{
 		using namespace collections;
+
+#define LOCK_TYPES ((vint)LockTargetAccess::NumbersOfLockTypes)
+
 /***********************************************************************
 LockManager
 ***********************************************************************/
+
+		const bool lockCompatibility
+			[LOCK_TYPES] // Request
+			[LOCK_TYPES] // Existing
+		= {
+			{true,	true,	true,	true,	true,	false},
+			{true,	true,	true,	false,	false,	false},
+			{true,	true,	false,	false,	false,	false},
+			{true,	false,	false,	true,	false,	false},
+			{true,	false,	false,	false,	false,	false},
+			{false,	false,	false,	false,	false,	false},
+		};
 
 		template<typename TInfo>
 		bool LockManager::AcquireObjectLock(
 			Ptr<TInfo> lockInfo,
 			const LockOwner& owner,
-			LockTargetAccess access,
-			LockResult& result
+			LockTargetAccess access
 			)
 		{
-			switch (access)
+			for(vint i = 0; i < LOCK_TYPES; i++)
 			{
-			case LockTargetAccess::Shared:
+				if (lockCompatibility[(vint)access][i] == false)
 				{
-					vint index = lockInfo->sharedOwners.Keys().IndexOf(owner.transaction.index);
-					if (index != -1)
+					const auto& owners = lockInfo->owners[i];
+					if (owners.Count() > 0)
 					{
-						if (lockInfo->sharedOwners.GetByIndex(index).Contains(owner.task.index))
-						{
-							return false;
-						}
+						return false;
 					}
-
-					if (lockInfo->exclusiveOwner.transaction.IsValid())
-					{
-						result.blocked = true;
-						return true;
-					}
-					lockInfo->sharedOwners.Add(owner.transaction.index, owner.task.index);
-					result.blocked = false;
-					return true;
 				}
-				break;
-			case LockTargetAccess::Exclusive:
-				{
-					if (lockInfo->exclusiveOwner.transaction.IsValid())
-					{
-						if (lockInfo->exclusiveOwner == owner)
-						{
-							return false;
-						}
-					}
-
-					if (lockInfo->exclusiveOwner.transaction.IsValid() ||
-						lockInfo->sharedOwners.Count() > 0)
-					{
-						result.blocked = true;
-						return true;
-					}
-					lockInfo->exclusiveOwner = owner;
-					return true;
-				}
-				break;
 			}
-			return false;
+
+			auto& owners = lockInfo->owners[(vint)access];
+			owners.Add(owner.transaction.index, owner.task.index);
+			return true;
 		}
 
 		template<typename TInfo>
@@ -71,30 +55,8 @@ LockManager
 			LockTargetAccess access
 			)
 		{
-			switch (access)
-			{
-			case LockTargetAccess::Shared:
-				{
-					vint index = lockInfo->sharedOwners.Keys().IndexOf(owner.transaction.index);
-					if (index == -1)
-					{
-						return false;
-					}
-					return lockInfo->sharedOwners.Remove(owner.transaction.index, owner.task.index);
-				}
-				break;
-			case LockTargetAccess::Exclusive:
-				{
-					if (lockInfo->exclusiveOwner != owner)
-					{
-						return false;
-					}
-					lockInfo->exclusiveOwner = LockOwner();
-					return true;
-				}
-				break;
-			}
-			return false;
+			auto& owners = lockInfo->owners[(vint)access];
+			return owners.Remove(owner.transaction.index, owner.task.index);
 		}
 		
 		bool LockManager::CheckInput(const LockOwner& owner, const LockTarget& target)
@@ -262,15 +224,14 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Table:
-					if (!AcquireObjectLock(tableLockInfo, owner, target.access, result))
+					if (AcquireObjectLock(tableLockInfo, owner, target.access))
 					{
-						return false;
+						return true;
 					}
-					if (result.blocked && !AddPendingLock(owner, target))
+					else
 					{
-						return false;
+						return AddPendingLock(owner, target);
 					}
-					return true;
 				case LockTargetType::Page:
 					{
 						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
@@ -295,22 +256,14 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Page:
+					if (AcquireObjectLock(pageLockInfo, owner, target.access))
 					{
-						bool acquired = AcquireObjectLock(pageLockInfo, owner, target.access, result);
-						if (!acquired)
-						{
-							return false;
-						}
-						else if (result.blocked)
-						{
-							return AddPendingLock(owner, target);
-						}
-						else
-						{
-							return true;
-						}
+						return true;
 					}
-					return true;
+					else
+					{
+						return AddPendingLock(owner, target);
+					}
 				case LockTargetType::Row:
 					return false;
 				}
@@ -393,5 +346,7 @@ LockManager
 		{
 			return false;
 		}
+		
+#undef LOCK_TYPES
 	}
 }

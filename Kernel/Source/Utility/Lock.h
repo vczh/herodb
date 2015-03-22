@@ -49,12 +49,13 @@ namespace vl
 
 		enum class LockTargetAccess
 		{
-			IntentShared,
-			Shared,
-			Update,
-			IntentExclusive,
-			SharedIntentExclusive,
-			Exclusive,
+			IntentShared			= 0, // parent of Shared
+			Shared					= 1, // reading the object
+			Update					= 2, // intent to update the object, can upgrade to Shared ot Exclusive
+			IntentExclusive			= 3, // parent of Exclusive
+			SharedIntentExclusive	= 4, // parent of Update, can upgrade to IntentShared or IntentExclusive
+			Exclusive				= 5, // writing the object
+			NumbersOfLockTypes		= 6,
 		};
 
 		struct LockTarget
@@ -160,8 +161,7 @@ namespace vl
 
 				SpinLock		lock;
 				T				object;
-				LockOwnerGroup	sharedOwners;
-				LockOwner		exclusiveOwner;
+				LockOwnerGroup	owners[(vint)LockTargetAccess::NumbersOfLockTypes];
 
 				ObjectLockInfo(const T& _object)
 					:object(_object)
@@ -208,7 +208,7 @@ namespace vl
 			PendingLockGroup	pendingLocks;
 
 			template<typename TInfo>
-			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access, LockResult& result);
+			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access);
 			template<typename TInfo>
 			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access);
 			bool				CheckInput(const LockOwner& owner, const LockTarget& target);
