@@ -135,11 +135,39 @@ namespace vl
 
 				SpinLock		lock;
 				T				object;
+				volatile vint	intentAcquireCounter = 0;
 				TransSet		owners[(vint)LockTargetAccess::NumbersOfLockTypes];
 
 				ObjectLockInfo(const T& _object)
 					:object(_object)
 				{
+				}
+
+				void IncIntent()
+				{
+					INCRC(&intentAcquireCounter);
+				}
+
+				void DecIntent()
+				{
+					DECRC(&intentAcquireCounter);
+				}
+
+				bool IntentedToAcquire()
+				{
+					return intentAcquireCounter > 0;
+				}
+
+				bool IsEmpty()
+				{
+					for (vint i = 0; i < (vint)LockTargetAccess::NumbersOfLockTypes; i++)
+					{
+						if (owners[i].Count() > 0)
+						{
+							return false;
+						}
+					}
+					return true;
 				}
 			};
 			

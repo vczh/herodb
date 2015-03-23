@@ -250,6 +250,7 @@ LockManager
 				{
 					pageLockInfo = tableLockInfo->pageLocks.Values()[index];
 				}
+				pageLockInfo->IncIntent();
 			}
 
 			SPIN_LOCK(pageLockInfo->lock)
@@ -257,15 +258,19 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Page:
-					if (AcquireObjectLock(pageLockInfo, owner, target.access))
 					{
-						result.blocked = false;
-						return true;
-					}
-					else
-					{
-						result.blocked = true;
-						return AddPendingLock(owner, target);
+						bool success = true;
+						if (AcquireObjectLock(pageLockInfo, owner, target.access))
+						{
+							result.blocked = false;
+						}
+						else
+						{
+							result.blocked = true;
+							success = AddPendingLock(owner, target);
+						}
+						pageLockInfo->DecIntent();
+						return success;
 					}
 				case LockTargetType::Row:
 					{
@@ -279,6 +284,8 @@ LockManager
 						{
 							rowLockInfo = pageLockInfo->rowLocks.Values()[index];
 						}
+						pageLockInfo->DecIntent();
+						rowLockInfo->IncIntent();
 					}
 					break;
 				default:;
@@ -290,15 +297,19 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Row:
-					if (AcquireObjectLock(rowLockInfo, owner, target.access))
 					{
-						result.blocked = false;
-						return true;
-					}
-					else
-					{
-						result.blocked = true;
-						return AddPendingLock(owner, target);
+						bool success = true;
+						if (AcquireObjectLock(rowLockInfo, owner, target.access))
+						{
+							result.blocked = false;
+						}
+						else
+						{
+							result.blocked = true;
+							success = AddPendingLock(owner, target);
+						}
+						rowLockInfo->DecIntent();
+						return success;
 					}
 				default:;
 				}
@@ -335,7 +346,14 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Table:
-					return ReleaseObjectLock(tableLockInfo, owner, target.access) || RemovePendingLock(owner, target);
+					if (ReleaseObjectLock(tableLockInfo, owner, target.access))
+					{
+						return true;
+					}
+					else
+					{
+						return RemovePendingLock(owner, target);
+					}
 				case LockTargetType::Page:
 					targetPage = target.page;
 					break;
@@ -359,6 +377,16 @@ LockManager
 				case LockTargetType::Page:
 					if (ReleaseObjectLock(pageLockInfo, owner, target.access))
 					{
+						if (pageLockInfo->IsEmpty())
+						{
+							SPIN_LOCK(tableLockInfo->lock)
+							{
+								if (!pageLockInfo->IntentedToAcquire())
+								{
+									tableLockInfo->pageLocks.Remove(targetPage);
+								}
+							}
+						}
 						return true;
 					}
 					else
@@ -386,6 +414,27 @@ LockManager
 				case LockTargetType::Row:
 					if (ReleaseObjectLock(rowLockInfo, owner, target.access))
 					{
+						if (rowLockInfo->IsEmpty())
+						{
+							SPIN_LOCK(pageLockInfo->lock)
+							{
+								if (!rowLockInfo->IntentedToAcquire())
+								{
+									pageLockInfo->rowLocks.Remove(targetOffset);
+								}
+
+								if (pageLockInfo->IsEmpty())
+								{
+									SPIN_LOCK(tableLockInfo->lock)
+									{
+										if (!pageLockInfo->IntentedToAcquire())
+										{
+											tableLockInfo->pageLocks.Remove(targetPage);
+										}
+									}
+								}
+							}
+						}
 						return true;
 					}
 					else
