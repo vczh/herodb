@@ -142,9 +142,21 @@ namespace vl
 				{
 				}
 			};
+			
+			struct RowLockInfo : ObjectLockInfo<vuint64_t>
+			{
+				RowLockInfo(vuint64_t offset)
+					:ObjectLockInfo<vuint64_t>(offset)
+				{
+				}
+			};
+
+			typedef collections::Dictionary<vuint64_t, Ptr<RowLockInfo>>			RowLockMap;
 
 			struct PageLockInfo : ObjectLockInfo<BufferPage>
 			{
+				RowLockMap		rowLocks;
+
 				PageLockInfo(const BufferPage& page)
 					:ObjectLockInfo<BufferPage>(page)
 				{

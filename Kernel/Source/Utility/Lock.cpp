@@ -198,6 +198,9 @@ LockManager
 			if (pendingLocks.Keys().Contains(owner)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
 			Ptr<PageLockInfo> pageLockInfo;
+			Ptr<RowLockInfo> rowLockInfo;
+			BufferPage targetPage;
+			vuint64_t targetOffset = ~(vuint64_t)0;
 
 			SPIN_LOCK(lock)
 			{
@@ -230,21 +233,22 @@ LockManager
 						return AddPendingLock(owner, target);
 					}
 				case LockTargetType::Page:
-					{
-						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
-						if (index == -1)
-						{
-							pageLockInfo = new PageLockInfo(target.page);
-							tableLockInfo->pageLocks.Add(target.page.index, pageLockInfo);
-						}
-						else
-						{
-							pageLockInfo = tableLockInfo->pageLocks.Values()[index];
-						}
-					}
+					targetPage = target.page;
 					break;
 				case LockTargetType::Row:
-					return false;
+					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::AcquireLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
+					break;
+				}
+
+				vint index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
+				if (index == -1)
+				{
+					pageLockInfo = new PageLockInfo(target.page);
+					tableLockInfo->pageLocks.Add(targetPage, pageLockInfo);
+				}
+				else
+				{
+					pageLockInfo = tableLockInfo->pageLocks.Values()[index];
 				}
 			}
 
@@ -264,7 +268,38 @@ LockManager
 						return AddPendingLock(owner, target);
 					}
 				case LockTargetType::Row:
-					return false;
+					{
+						vint index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
+						if (index == -1)
+						{
+							rowLockInfo = new RowLockInfo(targetOffset);
+							pageLockInfo->rowLocks.Add(targetOffset, rowLockInfo);
+						}
+						else
+						{
+							rowLockInfo = pageLockInfo->rowLocks.Values()[index];
+						}
+					}
+					break;
+				default:;
+				}
+			}
+
+			SPIN_LOCK(rowLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Row:
+					if (AcquireObjectLock(rowLockInfo, owner, target.access))
+					{
+						result.blocked = false;
+						return true;
+					}
+					else
+					{
+						result.blocked = true;
+						return AddPendingLock(owner, target);
+					}
 				default:;
 				}
 			}
@@ -277,6 +312,9 @@ LockManager
 			if (!CheckInput(owner, target)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
 			Ptr<PageLockInfo> pageLockInfo;
+			Ptr<RowLockInfo> rowLockInfo;
+			BufferPage targetPage;
+			vuint64_t targetOffset = ~(vuint64_t)0;
 			
 			SPIN_LOCK(lock)
 			{
@@ -299,18 +337,19 @@ LockManager
 				case LockTargetType::Table:
 					return ReleaseObjectLock(tableLockInfo, owner, target.access) || RemovePendingLock(owner, target);
 				case LockTargetType::Page:
-					{
-						vint index = tableLockInfo->pageLocks.Keys().IndexOf(target.page.index);
-						if (index == -1)
-						{
-							return false;
-						}
-						pageLockInfo = tableLockInfo->pageLocks.Values()[index];
-					}
+					targetPage = target.page;
 					break;
 				case LockTargetType::Row:
+					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::AcquireLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
+					break;
+				};
+
+				vint index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
+				if (index == -1)
+				{
 					return false;
 				}
+				pageLockInfo = tableLockInfo->pageLocks.Values()[index];
 			}
 
 			SPIN_LOCK(pageLockInfo->lock)
@@ -318,7 +357,7 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Page:
-					if(ReleaseObjectLock(pageLockInfo, owner, target.access))
+					if (ReleaseObjectLock(pageLockInfo, owner, target.access))
 					{
 						return true;
 					}
@@ -327,10 +366,36 @@ LockManager
 						return RemovePendingLock(owner, target);
 					}
 				case LockTargetType::Row:
-					return false;
+					{
+						vint index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
+						if (index == -1)
+						{
+							return false;
+						}
+						rowLockInfo = pageLockInfo->rowLocks.Values()[index];
+					}
+					break;
 				default:;
 				}
 			}
+
+			SPIN_LOCK(rowLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Row:
+					if (ReleaseObjectLock(rowLockInfo, owner, target.access))
+					{
+						return true;
+					}
+					else
+					{
+						return RemovePendingLock(owner, target);
+					}
+				default:;
+				}
+			}
+
 			return false;
 		}
 
