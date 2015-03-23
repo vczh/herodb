@@ -227,6 +227,7 @@ namespace vl
 
 			bool				AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result);
 			bool				ReleaseLock(BufferTransaction owner, const LockTarget& target);
+			bool				TableHasLocks(BufferTable table);
 
 			BufferTransaction	PickTransaction(LockResult& result);
 			void				DetectDeadlock(DeadlockInfo::List& infos);

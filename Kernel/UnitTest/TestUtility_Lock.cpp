@@ -147,6 +147,10 @@ TEST_CASE(Utility_Lock_Table)
 
 		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
 	}
+
+	// Ensure lock released
+	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
+	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
 }
 
 TEST_CASE(Utility_Lock_Page)
@@ -227,6 +231,10 @@ TEST_CASE(Utility_Lock_Page)
 
 		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
 	}
+
+	// Ensure lock released
+	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
+	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
 }
 
 TEST_CASE(Utility_Lock_Row)
@@ -310,6 +318,10 @@ TEST_CASE(Utility_Lock_Row)
 
 		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
 	}
+
+	// Ensure lock released
+	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
+	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
 }
 
 TEST_CASE(Utility_Lock_Hierarchy)

@@ -448,6 +448,27 @@ LockManager
 			return false;
 		}
 
+		bool LockManager::TableHasLocks(BufferTable table)
+		{
+			if (!table.IsValid()) return false;
+
+			Ptr<TableLockInfo> tableLockInfo;
+			SPIN_LOCK(lock)
+			{
+				if (tableLocks.Count() <= table.index)
+				{
+					return false;
+				}
+				tableLockInfo = tableLocks[table.index];
+			}
+
+			SPIN_LOCK(tableLockInfo->lock)
+			{
+				return tableLockInfo->IntentedToAcquire() || !tableLockInfo->IsEmpty();
+			}
+			return false;
+		}
+
 		BufferTransaction LockManager::PickTransaction(LockResult& result)
 		{
 			return BufferTransaction::Invalid();
