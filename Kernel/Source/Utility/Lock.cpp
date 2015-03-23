@@ -375,8 +375,13 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Page:
-					if (ReleaseObjectLock(pageLockInfo, owner, target.access))
 					{
+						bool success = true;
+						if (!ReleaseObjectLock(pageLockInfo, owner, target.access))
+						{
+							success = RemovePendingLock(owner, target);
+						}
+
 						if (pageLockInfo->IsEmpty())
 						{
 							SPIN_LOCK(tableLockInfo->lock)
@@ -387,11 +392,8 @@ LockManager
 								}
 							}
 						}
-						return true;
-					}
-					else
-					{
-						return RemovePendingLock(owner, target);
+
+						return success;
 					}
 				case LockTargetType::Row:
 					{
@@ -412,8 +414,13 @@ LockManager
 				switch (target.type)
 				{
 				case LockTargetType::Row:
-					if (ReleaseObjectLock(rowLockInfo, owner, target.access))
 					{
+						bool success = true;
+						if (!ReleaseObjectLock(rowLockInfo, owner, target.access))
+						{
+							success = RemovePendingLock(owner, target);
+						}
+
 						if (rowLockInfo->IsEmpty())
 						{
 							SPIN_LOCK(pageLockInfo->lock)
@@ -435,11 +442,8 @@ LockManager
 								}
 							}
 						}
-						return true;
-					}
-					else
-					{
-						return RemovePendingLock(owner, target);
+
+						return success;
 					}
 				default:;
 				}
