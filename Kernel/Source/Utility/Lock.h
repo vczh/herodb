@@ -14,32 +14,6 @@ namespace vl
 {
 	namespace database
 	{
-		struct LockOwner
-		{
-			BufferTransaction	transaction		= BufferTransaction::Invalid();
-			BufferTask			task			= BufferTask::Invalid();
-
-			LockOwner()
-			{
-			}
-
-			LockOwner(BufferTransaction _transaction, BufferTask _task)
-				:transaction(_transaction)
-				,task(_task)
-			{
-			}
-
-			static bool Compare(const LockOwner& a, const LockOwner& b)
-			{
-				return a.transaction.index == b.transaction.index
-					&& a.task.index == b.task.index
-					;
-			}
-
-			bool operator==(const LockOwner& b)const { return Compare(*this, b) == true; }
-			bool operator!=(const LockOwner& b)const { return Compare(*this, b) != true; }
-		};
-
 		enum class LockTargetType
 		{
 			Table,
@@ -143,8 +117,8 @@ namespace vl
 				vuint64_t			importance;
 			};
 
-			typedef collections::Dictionary<BufferTable::IndexType, Ptr<TableInfo>>			TableMap;
-			typedef collections::Dictionary<BufferTransaction::IndexType, Ptr<TransInfo>>	TransMap;
+			typedef collections::Dictionary<BufferTable, Ptr<TableInfo>>			TableMap;
+			typedef collections::Dictionary<BufferTransaction, Ptr<TransInfo>>		TransMap;
 
 			BufferManager*		bm;
 			SpinLock			lock;
@@ -152,7 +126,7 @@ namespace vl
 			TransMap			transactions;
 
 		protected:
-			typedef collections::Group<BufferTransaction::IndexType, BufferTask::IndexType>	LockOwnerGroup;
+			typedef collections::SortedList<BufferTransaction>						TransSet;
 
 			template<typename T>
 			struct ObjectLockInfo
@@ -161,7 +135,7 @@ namespace vl
 
 				SpinLock		lock;
 				T				object;
-				LockOwnerGroup	owners[(vint)LockTargetAccess::NumbersOfLockTypes];
+				TransSet		owners[(vint)LockTargetAccess::NumbersOfLockTypes];
 
 				ObjectLockInfo(const T& _object)
 					:object(_object)
@@ -177,7 +151,7 @@ namespace vl
 				}
 			};
 
-			typedef collections::Dictionary<BufferPage::IndexType, Ptr<PageLockInfo>>		PageLockMap;
+			typedef collections::Dictionary<BufferPage, Ptr<PageLockInfo>>			PageLockMap;
 
 			struct TableLockInfo : ObjectLockInfo<BufferTable>
 			{
@@ -189,31 +163,19 @@ namespace vl
 				}
 			};
 
-			struct PendingLockInfo
-			{
-				LockOwner		owner;
-				LockTarget		target;
-
-				PendingLockInfo(const LockOwner& _owner, const LockTarget& _target)
-					:owner(_owner)
-					,target(_target)
-				{
-				}
-			};
-
-			typedef collections::Array<Ptr<TableLockInfo>>									TableLockArray;
-			typedef collections::Group<BufferTransaction::IndexType, Ptr<PendingLockInfo>>	PendingLockGroup;
+			typedef collections::Array<Ptr<TableLockInfo>>							TableLockArray;
+			typedef collections::Dictionary<BufferTransaction, LockTarget>			PendingLockMap;
 
 			TableLockArray		tableLocks;
-			PendingLockGroup	pendingLocks;
+			PendingLockMap		pendingLocks;
 
 			template<typename TInfo>
-			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access);
+			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, BufferTransaction owner, LockTargetAccess access);
 			template<typename TInfo>
-			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, const LockOwner& owner, LockTargetAccess access);
-			bool				CheckInput(const LockOwner& owner, const LockTarget& target);
-			bool				AddPendingLock(const LockOwner& owner, const LockTarget& target);
-			bool				RemovePendingLock(const LockOwner& owner, const LockTarget& target);
+			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, BufferTransaction owner, LockTargetAccess access);
+			bool				CheckInput(BufferTransaction owner, const LockTarget& target);
+			bool				AddPendingLock(BufferTransaction owner, const LockTarget& target);
+			bool				RemovePendingLock(BufferTransaction owner, const LockTarget& target);
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
@@ -223,10 +185,10 @@ namespace vl
 			bool				RegisterTransaction(BufferTransaction trans, vuint64_t importance);
 			bool				UnregisterTransaction(BufferTransaction trans);
 
-			bool				AcquireLock(const LockOwner& owner, const LockTarget& target, LockResult& result);
-			bool				ReleaseLock(const LockOwner& owner, const LockTarget& target);
+			bool				AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result);
+			bool				ReleaseLock(BufferTransaction owner, const LockTarget& target);
 
-			BufferTask			PickTask(LockResult& result);
+			BufferTransaction	PickTransaction(LockResult& result);
 			void				DetectDeadlock(DeadlockInfo::List& infos);
 			bool				Rollback(BufferTransaction trans);
 		};

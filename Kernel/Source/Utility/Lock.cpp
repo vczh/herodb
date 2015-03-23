@@ -27,7 +27,7 @@ LockManager
 		template<typename TInfo>
 		bool LockManager::AcquireObjectLock(
 			Ptr<TInfo> lockInfo,
-			const LockOwner& owner,
+			BufferTransaction owner,
 			LockTargetAccess access
 			)
 		{
@@ -44,25 +44,24 @@ LockManager
 			}
 
 			auto& owners = lockInfo->owners[(vint)access];
-			owners.Add(owner.transaction.index, owner.task.index);
+			owners.Add(owner);
 			return true;
 		}
 
 		template<typename TInfo>
 		bool LockManager::ReleaseObjectLock(
 			Ptr<TInfo> lockInfo,
-			const LockOwner& owner,
+			BufferTransaction owner,
 			LockTargetAccess access
 			)
 		{
 			auto& owners = lockInfo->owners[(vint)access];
-			return owners.Remove(owner.transaction.index, owner.task.index);
+			return owners.Remove(owner);
 		}
 		
-		bool LockManager::CheckInput(const LockOwner& owner, const LockTarget& target)
+		bool LockManager::CheckInput(BufferTransaction owner, const LockTarget& target)
 		{
-			if (!owner.transaction.IsValid()) return false;
-			if (!owner.task.IsValid()) return false;
+			if (!owner.IsValid()) return false;
 			if (!target.table.IsValid()) return false;
 			switch (target.type)
 			{
@@ -75,11 +74,11 @@ LockManager
 			default:;
 			}
 
-			if (!transactions.Keys().Contains(owner.transaction.index))
+			if (!transactions.Keys().Contains(owner))
 			{
 				return false;
 			}
-			if (!tables.Keys().Contains(target.table.index))
+			if (!tables.Keys().Contains(target.table))
 			{
 				return false;
 			}
@@ -88,37 +87,31 @@ LockManager
 		}
 
 
-		bool LockManager::AddPendingLock(const LockOwner& owner, const LockTarget& target)
+		bool LockManager::AddPendingLock(BufferTransaction owner, const LockTarget& target)
 		{
-			vint index = pendingLocks.Keys().IndexOf(owner.transaction.index);
-			if (index !=-1)
+			vint index = pendingLocks.Keys().IndexOf(owner);
+			if (index != -1)
 			{
-				FOREACH(Ptr<PendingLockInfo>, info, pendingLocks.GetByIndex(index))
+				if (pendingLocks.Values()[index] == target)
 				{
-					if (info->owner == owner && info->target == target)
-					{
-						return false;
-					}
+					return false;
 				}
 			}
 
-			pendingLocks.Add(owner.transaction.index, new PendingLockInfo(owner, target));
+			pendingLocks.Add(owner, target);
 			return true;
 		}
 
-		bool LockManager::RemovePendingLock(const LockOwner& owner, const LockTarget& target)
+		bool LockManager::RemovePendingLock(BufferTransaction owner, const LockTarget& target)
 		{
-			vint index = pendingLocks.Keys().IndexOf(owner.transaction.index);
+			vint index = pendingLocks.Keys().IndexOf(owner);
 			if (index != -1)
 			{
-				FOREACH(Ptr<PendingLockInfo>, info, pendingLocks.GetByIndex(index))
+				if (pendingLocks.Values()[index] == target)
 				{
-					if (info->owner == owner && info->target == target)
-					{
-						pendingLocks.Remove(owner.transaction.index, info.Obj());
-						return true;
-					}
-				}	
+					pendingLocks.Remove(owner);
+					return true;
+				}
 			}
 			return false;
 		}
@@ -136,7 +129,7 @@ LockManager
 		{
 			SPIN_LOCK(lock)
 			{
-				if (tables.Keys().Contains(table.index))
+				if (tables.Keys().Contains(table))
 				{
 					return false;
 				}
@@ -149,7 +142,7 @@ LockManager
 				auto info = MakePtr<TableInfo>();
 				info->table = table;
 				info->source = source;
-				tables.Add(table.index, info);
+				tables.Add(table, info);
 			}
 			return true;
 		}
@@ -158,12 +151,12 @@ LockManager
 		{
 			SPIN_LOCK(lock)
 			{
-				if (!tables.Keys().Contains(table.index))
+				if (!tables.Keys().Contains(table))
 				{
 					return false;
 				}
 
-				tables.Remove(table.index);
+				tables.Remove(table);
 			}
 			return true;
 		}
@@ -172,7 +165,7 @@ LockManager
 		{
 			SPIN_LOCK(lock)
 			{
-				if (transactions.Keys().Contains(trans.index))
+				if (transactions.Keys().Contains(trans))
 				{
 					return false;
 				}
@@ -180,7 +173,7 @@ LockManager
 				auto info = MakePtr<TransInfo>();
 				info->trans = trans;
 				info->importance = importance;
-				transactions.Add(trans.index, info);
+				transactions.Add(trans, info);
 			}
 			return true;
 		}
@@ -189,19 +182,20 @@ LockManager
 		{
 			SPIN_LOCK(lock)
 			{
-				if (!transactions.Keys().Contains(trans.index))
+				if (!transactions.Keys().Contains(trans))
 				{
 					return false;
 				}
 
-				transactions.Remove(trans.index);
+				transactions.Remove(trans);
 			}
 			return true;
 		}
 
-		bool LockManager::AcquireLock(const LockOwner& owner, const LockTarget& target, LockResult& result)
+		bool LockManager::AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result)
 		{
 			if (!CheckInput(owner, target)) return false;
+			if (pendingLocks.Keys().Contains(owner)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
 			Ptr<PageLockInfo> pageLockInfo;
 
@@ -278,7 +272,7 @@ LockManager
 			return false;
 		}
 
-		bool LockManager::ReleaseLock(const LockOwner& owner, const LockTarget& target)
+		bool LockManager::ReleaseLock(BufferTransaction owner, const LockTarget& target)
 		{
 			if (!CheckInput(owner, target)) return false;
 			Ptr<TableLockInfo> tableLockInfo;
@@ -340,9 +334,9 @@ LockManager
 			return false;
 		}
 
-		BufferTask LockManager::PickTask(LockResult& result)
+		BufferTransaction LockManager::PickTransaction(LockResult& result)
 		{
-			return BufferTask::Invalid();
+			return BufferTransaction::Invalid();
 		}
 
 		void LockManager::DetectDeadlock(DeadlockInfo::List& infos)

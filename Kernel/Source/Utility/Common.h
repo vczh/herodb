@@ -53,7 +53,6 @@ namespace vl
 		typedef IdObject<vuint64_t,	2>	BufferPointer;
 		typedef IdObject<vuint64_t,	3>	BufferTransaction;
 		typedef IdObject<vint32_t,	4>	BufferTable;
-		typedef IdObject<vuint64_t,	4>	BufferTask;
 
 		template<typename T>
 		T IntUpperBound(T size, T divisor)

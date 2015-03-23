@@ -75,7 +75,6 @@ TEST_CASE(Utility_Lock_Registering)
 	LockManager lm(&bm);									\
 	BufferTable tableA{1}, tableB{2};						\
 	BufferTransaction transA{1}, transB{2};					\
-	BufferTask taskA{1}, taskB{2};							\
 	BufferPage pageA{1}, pageB{2};							\
 	TEST_ASSERT(lm.RegisterTable(tableA, source) == true);	\
 	TEST_ASSERT(lm.RegisterTable(tableB, source) == true);	\
@@ -91,33 +90,28 @@ TEST_CASE(Utility_Lock_Registering)
 TEST_CASE(Utility_Lock_Table)
 {
 	INIT_LOCK_MANAGER;
-	LockOwner lo, loA, loB;
+	BufferTransaction lo, loA, loB;
 	LockTarget lt, ltA, ltB;
 	LockResult lr, lrA, lrB;
 	
 	// Lock invalid table will fail
-	lo = {transA, taskA};
+	lo = transA;
 	lt = {SLOCK, BufferTable::Invalid()}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Lock using invalid transaction will fail
-	lo = {BufferTransaction::Invalid(), taskA};
-	lt = {SLOCK, tableA}; 
-	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
-
-	// Lock using invalid task will fail
-	lo = {transA, BufferTask::Invalid()};
+	lo = BufferTransaction::Invalid();
 	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Unlock unexisting lock will fail
-	lo = {transA, taskA};
+	lo = transA;
 	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt) == false);
 
 	// Check lock compatiblity
-	loA = {transA, taskA};
-	loB = {transB, taskB};
+	loA = transA;
+	loB = transB;
 	for (vint i = 0; i < LOCK_TYPES; i++)
 	{
 		ltA = {(LockTargetAccess)i, tableA};
@@ -157,35 +151,30 @@ TEST_CASE(Utility_Lock_Table)
 TEST_CASE(Utility_Lock_Page)
 {
 	INIT_LOCK_MANAGER;
-	LockOwner lo, loA, loB;
+	BufferTransaction lo, loA, loB;
 	LockTarget lt, ltA, ltB;
 	LockResult lr, lrA, lrB;
 	
 	// Lock invalid table or page will fail
-	lo = {transA, taskA};
+	lo = transA;
 	lt = {SLOCK, BufferTable::Invalid(), pageA}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 	lt = {SLOCK, tableA, BufferPage::Invalid()}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Lock using invalid transaction will fail
-	lo = {BufferTransaction::Invalid(), taskA};
-	lt = {SLOCK, tableA, pageA}; 
-	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
-
-	// Lock using invalid task will fail
-	lo = {transA, BufferTask::Invalid()};
+	lo = BufferTransaction::Invalid();
 	lt = {SLOCK, tableA, pageA}; 
 	TEST_ASSERT(lm.AcquireLock(lo, lt, lr) == false);
 
 	// Unlock unexisting lock will fail
-	lo = {transA, taskA};
+	lo = transA;
 	lt = {SLOCK, tableA, pageA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt) == false);
 
 	// Check lock compatiblity
-	loA = {transA, taskA};
-	loB = {transB, taskB};
+	loA = transA;
+	loB = transB;
 	for (vint i = 0; i < LOCK_TYPES; i++)
 	{
 		ltA = {(LockTargetAccess)i, tableA, pageA};
