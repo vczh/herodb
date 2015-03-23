@@ -26,8 +26,8 @@ namespace vl
 			IntentShared			= 0, // parent of Shared
 			Shared					= 1, // reading the object
 			Update					= 2, // intent to update the object, can upgrade to Shared ot Exclusive
-			IntentExclusive			= 3, // parent of Exclusive
-			SharedIntentExclusive	= 4, // parent of Update, can upgrade to IntentShared or IntentExclusive
+			IntentExclusive			= 3, // parent of Exclusive or Update
+			SharedIntentExclusive	= 4, // enable a transaction to acquire Shared and IntentExclusive at the same time
 			Exclusive				= 5, // writing the object
 			NumbersOfLockTypes		= 6,
 		};
