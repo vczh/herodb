@@ -52,11 +52,11 @@ BufferManager
 							auto source = sources[tuple.f0];
 							SPIN_LOCK(source->GetLock())
 							{
-								source->UnmapPage(tuple.f1);
+								CHECK_ERROR(source->UnmapPage(tuple.f1), L"vl::database::BufferManager::SwapCacheIfNecessary()#Internal error: Failed to unmap page.");
 							}
 						}
 
-						CHECK_ERROR(totalCachedPages <= cachePageCount, L"vl::database::BufferManager::SwapCacheIfNecessary()#Internal error: failed to maintain totalCachedPages.");
+						CHECK_ERROR(totalCachedPages <= cachePageCount, L"vl::database::BufferManager::SwapCacheIfNecessary()#Internal error: Failed to maintain totalCachedPages.");
 					}
 				}
 			}
@@ -83,9 +83,9 @@ BufferManager
 
 		BufferManager::~BufferManager()
 		{
-			FOREACH(Ptr<IBufferSource>, bs, sources.Values())
+			FOREACH(Ptr<IBufferSource>, source, sources.Values())
 			{
-				bs->Unload();
+				source->Unload();
 			}
 		}
 

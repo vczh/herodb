@@ -110,13 +110,13 @@ FileBufferSource
 					struct stat fileState;	
 					if (fstat(fileDescriptor, &fileState) == -1)
 					{
-						return 0;
+						return nullptr;
 					}
 					if (fileState.st_size < offset + pageSize)
 					{
 						if (fileState.st_size != offset)
 						{
-							return 0;
+							return nullptr;
 						}
 						ftruncate(fileDescriptor, offset + pageSize);
 						totalPageCount = offset / pageSize + 1;
@@ -174,6 +174,7 @@ FileBufferSource
 			{
 				BufferPage initialPage{initialPages[activeInitialPageIndex]};
 				auto pageDesc = MapPage(initialPage);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to map the last active initial page.");
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
 				if (count == initialPageItemCount)
@@ -185,6 +186,7 @@ FileBufferSource
 						msync(numbers, pageSize, MS_SYNC);
 
 						auto newPageDesc = MapPage(newInitialPage);
+						CHECK_ERROR(newPageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to create a new initial page.");
 						numbers = (vuint64_t*)newPageDesc->address;
 						memset(numbers, 0, pageSize);
 						numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
@@ -198,6 +200,7 @@ FileBufferSource
 					{
 						BufferPage newInitialPage{initialPages[activeInitialPageIndex + 1]};
 						auto newPageDesc = MapPage(newInitialPage);
+						CHECK_ERROR(newPageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to reuse a created initial page.");
 						numbers = (vuint64_t*)newPageDesc->address;
 						numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
 						numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
@@ -218,6 +221,7 @@ FileBufferSource
 				BufferPage page = BufferPage::Invalid();
 				BufferPage initialPage{initialPages[activeInitialPageIndex]};
 				auto pageDesc = MapPage(initialPage);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::PopFreePage()#Internal error: Failed to map the last active initial page.");
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
 
@@ -246,6 +250,7 @@ FileBufferSource
 
 				BufferPage useMaskPage{useMaskPages[useMaskPageIndex]};
 				auto pageDesc = MapPage(useMaskPage);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::GetUseMask(BufferPage)#Internal error: Failed to map the specified use mask page.");
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				auto& item = numbers[useMaskPageItem];
 				bool result = ((item >> useMaskPageShift) & ((vuint64_t)1)) == 1;
@@ -269,9 +274,11 @@ FileBufferSource
 					newPage = true;
 					BufferPage lastPage{useMaskPages[useMaskPageIndex - 1]};
 					useMaskPage = AppendPage();
+					CHECK_ERROR(useMaskPage.IsValid(), L"vl::database::FileBufferSOurce::SetUseMask(BufferPage, bool)#Internal error: Failed to create a new use mask page.");
 					useMaskPages.Add(useMaskPage.index);
 
 					auto pageDesc = MapPage(lastPage);
+					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::SetUseMask(BufferPage, bool)#Internal error: Failed to map the last use mask page.");
 					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = useMaskPage.index;
 					msync(numbers, pageSize, MS_SYNC);
@@ -282,6 +289,7 @@ FileBufferSource
 				}
 
 				auto pageDesc = MapPage(useMaskPage);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::SetUseMask(BufferPage, bool)#Internal error: Failed to map the specified use mask page.");
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				if (newPage)
 				{
@@ -446,6 +454,7 @@ FileBufferSource
 				{
 					BufferPage page{INDEX_PAGE_INITIAL};
 					auto pageDesc = MapPage(page);
+					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INITIAL.");
 					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 					memset(numbers, 0, pageSize);
 					numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
@@ -458,6 +467,7 @@ FileBufferSource
 				{
 					BufferPage page{INDEX_PAGE_USEMASK};
 					auto pageDesc = MapPage(page);
+					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_USEMASK.");
 					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 					memset(numbers, 0, pageSize);
 					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
@@ -466,7 +476,8 @@ FileBufferSource
 				}
 				{
 					BufferPage page{INDEX_PAGE_INDEX};
-					MapPage(page);
+					auto pageDesc = MapPage(page);
+					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INDEX.");
 				}
 
 				{

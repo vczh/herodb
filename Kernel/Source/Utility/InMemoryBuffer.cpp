@@ -110,7 +110,7 @@ InMemoryBufferSource
 				}
 
 				free(pageDesc->address);
-				pages[page.index] = 0;
+				pages[page.index] = nullptr;
 				freePages.Add(page.index);
 				DECRC(totalUsedPages);
 				return true;
