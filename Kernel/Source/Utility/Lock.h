@@ -135,11 +135,12 @@ namespace vl
 
 				SpinLock		lock;
 				T				object;
-				volatile vint	intentAcquireCounter = 0;
+				volatile vint	intentAcquireCounter; // Fuck clang++ 3.4-1ubuntu3 who will crash if I put "=0" here
 				TransSet		owners[(vint)LockTargetAccess::NumbersOfLockTypes];
 
 				ObjectLockInfo(const T& _object)
 					:object(_object)
+					,intentAcquireCounter(0)
 				{
 				}
 
