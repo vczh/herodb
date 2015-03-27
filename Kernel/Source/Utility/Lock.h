@@ -223,7 +223,7 @@ namespace vl
 
 			using AcquireLockArgs	= Tuple<const LockTarget&, LockResult&>;
 			using ReleaseLockArgs	= const LockTarget&;
-			using UpgradeLockArgs	= Tuple<const LockTarget&, LockTargetAccess>;
+			using UpgradeLockArgs	= Tuple<const LockTarget&, LockTargetAccess, LockResult&>;
 			
 			template<typename TArgs>
 			using TableLockHandler	= GenericLockHandler<TArgs, TableLockInfo>;
@@ -235,6 +235,8 @@ namespace vl
 			template<typename TArgs>
 			bool				OperateObjectLock(BufferTransaction owner, TArgs arguments, TableLockHandler<TArgs> tableLockHandler, PageLockHandler<TArgs> pageLockHandler, RowLockHandler<TArgs> rowLockHandler, bool createLockInfo, bool checkPendingLock);
 
+			template<typename TLockInfo>
+			bool				AcquireGeneralLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TLockInfo> lockInfo);
 			bool				AcquireTableLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
 			bool				AcquirePageLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
 			bool				AcquireRowLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
@@ -243,6 +245,8 @@ namespace vl
 			bool				ReleasePageLock(BufferTransaction owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
 			bool				ReleaseRowLock(BufferTransaction owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
 
+			template<typename TLockInfo>
+			bool				UpgradeGeneralLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TLockInfo> lockInfo);
 			bool				UpgradeTableLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
 			bool				UpgradePageLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
 			bool				UpgradeRowLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);

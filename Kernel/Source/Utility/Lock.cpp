@@ -125,8 +125,8 @@ LockManager (Template)
 			return target;
 		}
 
-		template<typename T>
-		const LockTarget& GetLockTarget(Tuple<const LockTarget&, T> arguments)
+		template<typename... T>
+		const LockTarget& GetLockTarget(Tuple<const LockTarget&, T...> arguments)
 		{
 			return arguments.f0;
 		}
@@ -143,11 +143,6 @@ LockManager (Template)
 			)
 		{
 			const LockTarget& target = GetLockTarget(arguments);
-			if (!CheckInput(owner, target)) return false;
-			if (checkPendingLock && pendingLocks.Keys().Contains(owner))
-			{
-				return false;
-			}
 			Ptr<TableLockInfo> tableLockInfo;
 			Ptr<PageLockInfo> pageLockInfo;
 			Ptr<RowLockInfo> rowLockInfo;
@@ -156,6 +151,12 @@ LockManager (Template)
 
 			SPIN_LOCK(lock)
 			{
+				if (!CheckInput(owner, target)) return false;
+				if (checkPendingLock && pendingLocks.Keys().Contains(owner))
+				{
+					return false;
+				}
+
 				if (tableLocks.Count() <= target.table.index)
 				{
 					if (!createLockInfo)
@@ -274,56 +275,40 @@ LockManager (Template)
 /***********************************************************************
 LockManager (Acquire)
 ***********************************************************************/
-
-		bool LockManager::AcquireTableLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo)
+		template<typename TLockInfo>
+		bool LockManager::AcquireGeneralLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TLockInfo> lockInfo)
 		{
 			const LockTarget& target = arguments.f0;
 			LockResult& result = arguments.f1;
 
-			if (AcquireObjectLock(tableLockInfo, owner, target.access))
+			if (AcquireObjectLock(lockInfo, owner, target.access))
 			{
 				result.blocked = false;
-				return true;
 			}
 			else
 			{
 				result.blocked = true;
-				return AddPendingLock(owner, target);
+				SPIN_LOCK(lock)
+				{
+					return AddPendingLock(owner, target);
+				}
 			}
+			return true;
+		}
+
+		bool LockManager::AcquireTableLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo)
+		{
+			return AcquireGeneralLock(owner, arguments, tableLockInfo);
 		}
 
 		bool LockManager::AcquirePageLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
-			const LockTarget& target = arguments.f0;
-			LockResult& result = arguments.f1;
-
-			if (AcquireObjectLock(pageLockInfo, owner, target.access))
-			{
-				result.blocked = false;
-				return true;
-			}
-			else
-			{
-				result.blocked = true;
-				return AddPendingLock(owner, target);
-			}
+			return AcquireGeneralLock(owner, arguments, pageLockInfo);
 		}
 
 		bool LockManager::AcquireRowLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
 		{
-			const LockTarget& target = arguments.f0;
-			LockResult& result = arguments.f1;
-
-			if (AcquireObjectLock(rowLockInfo, owner, target.access))
-			{
-				result.blocked = false;
-				return true;
-			}
-			else
-			{
-				result.blocked = true;
-				return AddPendingLock(owner, target);
-			}
+			return AcquireGeneralLock(owner, arguments, rowLockInfo);
 		}
 
 /***********************************************************************
@@ -334,14 +319,14 @@ LockManager (Release)
 		{
 			const LockTarget& target = arguments;
 
-			if (ReleaseObjectLock(tableLockInfo, owner, target.access))
+			if (!ReleaseObjectLock(tableLockInfo, owner, target.access))
 			{
-				return true;
+				SPIN_LOCK(lock)
+				{
+					return RemovePendingLock(owner, target);
+				}
 			}
-			else
-			{
-				return RemovePendingLock(owner, target);
-			}
+			return true;
 		}
 
 		bool LockManager::ReleasePageLock(BufferTransaction owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
@@ -351,7 +336,10 @@ LockManager (Release)
 			bool success = true;
 			if (!ReleaseObjectLock(pageLockInfo, owner, target.access))
 			{
-				success = RemovePendingLock(owner, target);
+				SPIN_LOCK(lock)
+				{
+					success = RemovePendingLock(owner, target);
+				}
 			}
 
 			if (pageLockInfo->IsEmpty())
@@ -374,7 +362,10 @@ LockManager (Release)
 			bool success = true;
 			if (!ReleaseObjectLock(rowLockInfo, owner, target.access))
 			{
-				success = RemovePendingLock(owner, target);
+				SPIN_LOCK(lock)
+				{
+					success = RemovePendingLock(owner, target);
+				}
 			}
 
 			if (rowLockInfo->IsEmpty())
@@ -405,28 +396,39 @@ LockManager (Release)
 LockManager (Upgrade)
 ***********************************************************************/
 
-		bool LockManager::UpgradeTableLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo)
+		template<typename TLockInfo>
+		bool LockManager::UpgradeGeneralLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TLockInfo> lockInfo)
 		{
 			const LockTarget& oldTarget = arguments.f0;
 			LockTargetAccess newAccess = arguments.f1;
+			LockResult& result = arguments.f2;
 
-			return false;
+			if (!ReleaseObjectLock(lockInfo, owner, oldTarget.access))
+			{
+				return false;
+			}
+			else
+			{
+				LockTarget newTarget = oldTarget;
+				newTarget.access = newAccess;
+				AcquireLockArgs newArguments(newTarget, result);
+				return AcquireGeneralLock(owner, newArguments, lockInfo);
+			}
+		}
+
+		bool LockManager::UpgradeTableLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo)
+		{
+			return UpgradeGeneralLock(owner, arguments, tableLockInfo);
 		}
 
 		bool LockManager::UpgradePageLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
-			const LockTarget& oldTarget = arguments.f0;
-			LockTargetAccess newAccess = arguments.f1;
-
-			return false;
+			return UpgradeGeneralLock(owner, arguments, pageLockInfo);
 		}
 
 		bool LockManager::UpgradeRowLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
 		{
-			const LockTarget& oldTarget = arguments.f0;
-			LockTargetAccess newAccess = arguments.f1;
-
-			return false;
+			return UpgradeGeneralLock(owner, arguments, rowLockInfo);
 		}
 
 /***********************************************************************
@@ -540,7 +542,7 @@ LockManager
 
 		bool LockManager::UpgradeLock(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result)
 		{
-			UpgradeLockArgs arguments(oldTarget, newAccess);
+			UpgradeLockArgs arguments(oldTarget, newAccess, result);
 			return OperateObjectLock<UpgradeLockArgs>(
 				owner,
 				arguments,
