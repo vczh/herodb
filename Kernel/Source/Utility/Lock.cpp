@@ -201,7 +201,7 @@ LockManager (Template)
 				{
 				case LockTargetType::Page:
 					{
-						bool success = (this->*pageLockHandler)(owner, target, result, pageLockInfo);
+						bool success = (this->*pageLockHandler)(owner, target, result, tableLockInfo, pageLockInfo);
 						if (createLockInfo)
 						{
 							pageLockInfo->DecIntent();
@@ -241,7 +241,7 @@ LockManager (Template)
 				{
 				case LockTargetType::Row:
 					{
-						bool success = (this->*rowLockHandler)(owner, target, result, rowLockInfo);
+						bool success = (this->*rowLockHandler)(owner, target, result, tableLockInfo, pageLockInfo, rowLockInfo);
 						if (createLockInfo)
 						{
 							rowLockInfo->DecIntent();
@@ -259,55 +259,132 @@ LockManager (Template)
 LockManager (Acquire)
 ***********************************************************************/
 
-		bool LockManager::AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo)
 		{
-			return false;
+			if (AcquireObjectLock(tableLockInfo, owner, target.access))
+			{
+				result.blocked = false;
+				return true;
+			}
+			else
+			{
+				result.blocked = true;
+				return AddPendingLock(owner, target);
+			}
 		}
 
-		bool LockManager::AcquireRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
-			return false;
+			if (AcquireObjectLock(pageLockInfo, owner, target.access))
+			{
+				result.blocked = false;
+				return true;
+			}
+			else
+			{
+				result.blocked = true;
+				return AddPendingLock(owner, target);
+			}
 		}
 
-		bool LockManager::AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::AcquireRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
 		{
-			return false;
+			if (AcquireObjectLock(rowLockInfo, owner, target.access))
+			{
+				result.blocked = false;
+				return true;
+			}
+			else
+			{
+				result.blocked = true;
+				return AddPendingLock(owner, target);
+			}
 		}
 
 /***********************************************************************
 LockManager (Release)
 ***********************************************************************/
 
-		bool LockManager::ReleaseTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::ReleaseTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo)
 		{
-			return false;
+			if (ReleaseObjectLock(tableLockInfo, owner, target.access))
+			{
+				return true;
+			}
+			else
+			{
+				return RemovePendingLock(owner, target);
+			}
 		}
 
-		bool LockManager::ReleaseRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::ReleasePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
-			return false;
+			bool success = true;
+			if (!ReleaseObjectLock(pageLockInfo, owner, target.access))
+			{
+				success = RemovePendingLock(owner, target);
+			}
+
+			if (pageLockInfo->IsEmpty())
+			{
+				SPIN_LOCK(tableLockInfo->lock)
+				{
+					if (!pageLockInfo->IntentedToAcquire())
+					{
+						tableLockInfo->pageLocks.Remove(pageLockInfo->object);
+					}
+				}
+			}
+			return success;
 		}
 
-		bool LockManager::ReleasePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::ReleaseRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
 		{
-			return false;
+			bool success = true;
+			if (!ReleaseObjectLock(rowLockInfo, owner, target.access))
+			{
+				success = RemovePendingLock(owner, target);
+			}
+
+			if (rowLockInfo->IsEmpty())
+			{
+				SPIN_LOCK(pageLockInfo->lock)
+				{
+					if (!rowLockInfo->IntentedToAcquire())
+					{
+						pageLockInfo->rowLocks.Remove(rowLockInfo->object);
+					}
+
+					if (pageLockInfo->IsEmpty())
+					{
+						SPIN_LOCK(tableLockInfo->lock)
+						{
+							if (!pageLockInfo->IntentedToAcquire())
+							{
+								tableLockInfo->pageLocks.Remove(pageLockInfo->object);
+							}
+						}
+					}
+				}
+			}
+			return success;
 		}
 
 /***********************************************************************
 LockManager (Upgrade)
 ***********************************************************************/
 
-		bool LockManager::UpgradeTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::UpgradeTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo)
 		{
 			return false;
 		}
 
-		bool LockManager::UpgradeRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::UpgradePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
 			return false;
 		}
 
-		bool LockManager::UpgradePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		bool LockManager::UpgradeRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
 		{
 			return false;
 		}

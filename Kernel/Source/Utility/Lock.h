@@ -218,26 +218,26 @@ namespace vl
 			bool				AddPendingLock(BufferTransaction owner, const LockTarget& target);
 			bool				RemovePendingLock(BufferTransaction owner, const LockTarget& target);
 		protected:
-			template<typename T>
-			using GenericLockHandler = bool(LockManager::*)(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<T> lockInfo);
+			template<typename... T>
+			using GenericLockHandler = bool(LockManager::*)(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<T>... lockInfo);
 			
 			using TableLockHandler	= GenericLockHandler<TableLockInfo>;
-			using PageLockHandler	= GenericLockHandler<PageLockInfo>;
-			using RowLockHandler	= GenericLockHandler<RowLockInfo>;
+			using PageLockHandler	= GenericLockHandler<TableLockInfo, PageLockInfo>;
+			using RowLockHandler	= GenericLockHandler<TableLockInfo, PageLockInfo, RowLockInfo>;
 
 			bool				OperateObjectLock(BufferTransaction owner, const LockTarget& target, LockResult& result, TableLockHandler tableLockHandler, PageLockHandler pageLockHandler, RowLockHandler rowLockHandler, bool createLockInfo);
 
-			bool				AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
-			bool				AcquireRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
-			bool				AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo);
+			bool				AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
+			bool				AcquireRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
 
-			bool				ReleaseTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
-			bool				ReleaseRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
-			bool				ReleasePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				ReleaseTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo);
+			bool				ReleasePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
+			bool				ReleaseRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
 
-			bool				UpgradeTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
-			bool				UpgradeRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
-			bool				UpgradePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				UpgradeTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo);
+			bool				UpgradePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
+			bool				UpgradeRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
