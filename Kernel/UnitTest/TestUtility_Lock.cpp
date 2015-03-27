@@ -142,19 +142,17 @@ namespace general_lock_testing
 		// Check upgrade lock
 		for (vint i = 0; i < LOCK_TYPES; i++)
 		{
-			auto ltA = ltAGen(i);
-			TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-			TEST_ASSERT(lrA.blocked == false);
-
 			for (vint j = 0; j < LOCK_TYPES; j++)
 			{
-				auto ltB = ltAGen(j);
-				TEST_ASSERT(lm.UpgradeLock(loB, ltA, ltB.access, lrB) == true);
-				TEST_ASSERT(lrB.blocked == false);
-				TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-			}
+				auto ltA = ltAGen(i);
+				TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+				TEST_ASSERT(lrA.blocked == false);
 
-			TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
+				auto ltB = ltAGen(j);
+				TEST_ASSERT(lm.UpgradeLock(loA, ltA, ltB.access, lrB) == true);
+				TEST_ASSERT(lrB.blocked == false);
+				TEST_ASSERT(lm.ReleaseLock(loA, ltB) == true);
+			}
 		}
 
 		// Check upgrade lock compatibility
