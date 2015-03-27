@@ -225,7 +225,7 @@ namespace vl
 			using PageLockHandler	= GenericLockHandler<TableLockInfo, PageLockInfo>;
 			using RowLockHandler	= GenericLockHandler<TableLockInfo, PageLockInfo, RowLockInfo>;
 
-			bool				OperateObjectLock(BufferTransaction owner, const LockTarget& target, LockResult& result, TableLockHandler tableLockHandler, PageLockHandler pageLockHandler, RowLockHandler rowLockHandler, bool createLockInfo);
+			bool				OperateObjectLock(BufferTransaction owner, const LockTarget& target, LockResult& result, TableLockHandler tableLockHandler, PageLockHandler pageLockHandler, RowLockHandler rowLockHandler, bool createLockInfo, bool checkPendingLock);
 
 			bool				AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo);
 			bool				AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);

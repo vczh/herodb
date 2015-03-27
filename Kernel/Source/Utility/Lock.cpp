@@ -127,11 +127,15 @@ LockManager (Template)
 			TableLockHandler tableLockHandler,
 			PageLockHandler pageLockHandler,
 			RowLockHandler rowLockHandler,
-			bool createLockInfo
+			bool createLockInfo,
+			bool checkPendingLock
 			)
 		{
 			if (!CheckInput(owner, target)) return false;
-			if (pendingLocks.Keys().Contains(owner)) return false;
+			if (checkPendingLock && pendingLocks.Keys().Contains(owner))
+			{
+				return false;
+			}
 			Ptr<TableLockInfo> tableLockInfo;
 			Ptr<PageLockInfo> pageLockInfo;
 			Ptr<RowLockInfo> rowLockInfo;
@@ -478,6 +482,7 @@ LockManager
 				&LockManager::AcquireTableLock,
 				&LockManager::AcquirePageLock,
 				&LockManager::AcquireRowLock,
+				true,
 				true
 				);
 		}
@@ -492,6 +497,7 @@ LockManager
 				&LockManager::ReleaseTableLock,
 				&LockManager::ReleasePageLock,
 				&LockManager::ReleaseRowLock,
+				false,
 				false
 				);
 		}
@@ -506,7 +512,8 @@ LockManager
 				&LockManager::UpgradeTableLock,
 				&LockManager::UpgradePageLock,
 				&LockManager::UpgradeRowLock,
-				false
+				false,
+				true
 				);*/
 		}
 
