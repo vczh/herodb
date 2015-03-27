@@ -217,6 +217,27 @@ namespace vl
 			bool				CheckInput(BufferTransaction owner, const LockTarget& target);
 			bool				AddPendingLock(BufferTransaction owner, const LockTarget& target);
 			bool				RemovePendingLock(BufferTransaction owner, const LockTarget& target);
+		protected:
+			template<typename T>
+			using GenericLockHandler = bool(LockManager::*)(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<T> lockInfo);
+			
+			using TableLockHandler	= GenericLockHandler<TableLockInfo>;
+			using PageLockHandler	= GenericLockHandler<PageLockInfo>;
+			using RowLockHandler	= GenericLockHandler<RowLockInfo>;
+
+			bool				OperateObjectLock(BufferTransaction owner, const LockTarget& target, LockResult& result, TableLockHandler tableLockHandler, PageLockHandler pageLockHandler, RowLockHandler rowLockHandler, bool createLockInfo);
+
+			bool				AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				AcquireRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+
+			bool				ReleaseTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				ReleaseRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				ReleasePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+
+			bool				UpgradeTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				UpgradeRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
+			bool				UpgradePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo);
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
@@ -228,6 +249,7 @@ namespace vl
 
 			bool				AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result);
 			bool				ReleaseLock(BufferTransaction owner, const LockTarget& target);
+			bool				UpgradeLock(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result);
 			bool				TableHasLocks(BufferTable table);
 
 			BufferTransaction	PickTransaction(LockResult& result);

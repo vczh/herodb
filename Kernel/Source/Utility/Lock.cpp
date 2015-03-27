@@ -9,7 +9,7 @@ namespace vl
 #define LOCK_TYPES ((vint)LockTargetAccess::NumbersOfLockTypes)
 
 /***********************************************************************
-LockManager
+LockManager (ObjectLock)
 ***********************************************************************/
 
 		const bool lockCompatibility
@@ -115,6 +115,206 @@ LockManager
 			}
 			return false;
 		}
+
+/***********************************************************************
+LockManager (Template)
+***********************************************************************/
+
+		bool LockManager::OperateObjectLock(
+			BufferTransaction owner,
+			const LockTarget& target,
+			LockResult& result,
+			TableLockHandler tableLockHandler,
+			PageLockHandler pageLockHandler,
+			RowLockHandler rowLockHandler,
+			bool createLockInfo
+			)
+		{
+			if (!CheckInput(owner, target)) return false;
+			if (pendingLocks.Keys().Contains(owner)) return false;
+			Ptr<TableLockInfo> tableLockInfo;
+			Ptr<PageLockInfo> pageLockInfo;
+			Ptr<RowLockInfo> rowLockInfo;
+			BufferPage targetPage;
+			vuint64_t targetOffset = ~(vuint64_t)0;
+
+			SPIN_LOCK(lock)
+			{
+				if (tableLocks.Count() <= target.table.index)
+				{
+					if (!createLockInfo)
+					{
+						return false;
+					}
+					tableLocks.Resize(target.table.index + 1);
+				}
+
+				tableLockInfo = tableLocks[target.table.index];
+				if (!tableLockInfo)
+				{
+					if (!createLockInfo)
+					{
+						return false;
+					}
+					tableLockInfo = new TableLockInfo(target.table);
+					tableLocks[target.table.index] = tableLockInfo;
+				}
+			}
+
+			SPIN_LOCK(tableLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Table:
+					return (this->*tableLockHandler)(owner, target, result, tableLockInfo);
+				case LockTargetType::Page:
+					targetPage = target.page;
+					break;
+				case LockTargetType::Row:
+					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::AcquireLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
+					break;
+				}
+
+				vint index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
+				if (index == -1)
+				{
+					if (!createLockInfo)
+					{
+						return false;
+					}
+					pageLockInfo = new PageLockInfo(target.page);
+					tableLockInfo->pageLocks.Add(targetPage, pageLockInfo);
+				}
+				else
+				{
+					pageLockInfo = tableLockInfo->pageLocks.Values()[index];
+				}
+				if (createLockInfo)
+				{
+					pageLockInfo->IncIntent();
+				}
+			}
+
+			SPIN_LOCK(pageLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Page:
+					{
+						bool success = (this->*pageLockHandler)(owner, target, result, pageLockInfo);
+						if (createLockInfo)
+						{
+							pageLockInfo->DecIntent();
+						}
+						return success;
+					}
+				case LockTargetType::Row:
+					{
+						vint index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
+						if (index == -1)
+						{
+							if (!createLockInfo)
+							{
+								return false;
+							}
+							rowLockInfo = new RowLockInfo(targetOffset);
+							pageLockInfo->rowLocks.Add(targetOffset, rowLockInfo);
+						}
+						else
+						{
+							rowLockInfo = pageLockInfo->rowLocks.Values()[index];
+						}
+						if (createLockInfo)
+						{
+							pageLockInfo->DecIntent();
+							rowLockInfo->IncIntent();
+						}
+					}
+					break;
+				default:;
+				}
+			}
+
+			SPIN_LOCK(rowLockInfo->lock)
+			{
+				switch (target.type)
+				{
+				case LockTargetType::Row:
+					{
+						bool success = (this->*rowLockHandler)(owner, target, result, rowLockInfo);
+						if (createLockInfo)
+						{
+							rowLockInfo->DecIntent();
+						}
+						return success;
+					}
+				default:;
+				}
+			}
+
+			return false;
+		}
+
+/***********************************************************************
+LockManager (Acquire)
+***********************************************************************/
+
+		bool LockManager::AcquireTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+		bool LockManager::AcquireRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+		bool LockManager::AcquirePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+/***********************************************************************
+LockManager (Release)
+***********************************************************************/
+
+		bool LockManager::ReleaseTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+		bool LockManager::ReleaseRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+		bool LockManager::ReleasePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+/***********************************************************************
+LockManager (Upgrade)
+***********************************************************************/
+
+		bool LockManager::UpgradeTableLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+		bool LockManager::UpgradeRowLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+		bool LockManager::UpgradePageLock(BufferTransaction owner, const LockTarget& target, LockResult& result, Ptr<TableLockInfo> lockInfo)
+		{
+			return false;
+		}
+
+/***********************************************************************
+LockManager
+***********************************************************************/
 
 		LockManager::LockManager(BufferManager* _bm)
 			:bm(_bm)
@@ -449,6 +649,11 @@ LockManager
 				}
 			}
 
+			return false;
+		}
+
+		bool LockManager::UpgradeLock(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result)
+		{
 			return false;
 		}
 
