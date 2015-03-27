@@ -81,6 +81,9 @@ TEST_CASE(Utility_Lock_Registering)
 	TEST_ASSERT(lm.RegisterTable(tableB, source) == true);	\
 	TEST_ASSERT(lm.RegisterTransaction(transA, 0) == true);	\
 	TEST_ASSERT(lm.RegisterTransaction(transB, 0) == true);	\
+	BufferTransaction lo;									\
+	LockTarget lt;											\
+	LockResult lr;											\
 
 #define TABLE LockTargetType::Table
 #define PAGE LockTargetType::Page
@@ -88,12 +91,111 @@ TEST_CASE(Utility_Lock_Registering)
 #define SLOCK LockTargetAccess::Shared
 #define XLOCK LockTargetAccess::Exclusive
 
+namespace general_lock_testing
+{
+	void TestLock(
+		LockManager& lm,
+		BufferTransaction loA,
+		BufferTransaction loB,
+		Func<LockTarget(vint)> ltAGen,
+		Func<LockTarget(vint)> ltBGen
+		)
+	{
+		LockResult lr, lrA, lrB;
+
+		// Check lock compatibility
+		for (vint i = 0; i < LOCK_TYPES; i++)
+		{
+			auto ltA = ltAGen(i);
+			TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+			TEST_ASSERT(lrA.blocked == false);
+
+			for (vint j = 0; j < LOCK_TYPES; j++)
+			{
+				auto ltB = ltAGen(j);
+				TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
+				TEST_ASSERT(lrB.blocked == !lockCompatibility[j][i]);
+				TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
+			}
+
+			TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
+		}
+		
+		// Check unrelated lock
+		for (vint i = 0; i < LOCK_TYPES; i++)
+		{
+			auto ltA = ltAGen(i);
+			TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+			TEST_ASSERT(lrA.blocked == false);
+
+			for (vint j = 0; j < LOCK_TYPES; j++)
+			{
+				auto ltB = ltBGen(j);
+				TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
+				TEST_ASSERT(lrB.blocked == false);
+				TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
+			}
+
+			TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
+		}
+
+		// Check upgrade lock
+		for (vint i = 0; i < LOCK_TYPES; i++)
+		{
+			auto ltA = ltAGen(i);
+			TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+			TEST_ASSERT(lrA.blocked == false);
+
+			for (vint j = 0; j < LOCK_TYPES; j++)
+			{
+				auto ltB = ltAGen(j);
+				TEST_ASSERT(lm.UpgradeLock(loB, ltA, ltB.access, lrB) == true);
+				TEST_ASSERT(lrB.blocked == false);
+				TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
+			}
+
+			TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
+		}
+
+		// Check upgrade lock compatibility
+		for (vint i = 0; i < LOCK_TYPES; i++)
+		{
+			auto ltA = ltAGen(i);
+			TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
+			TEST_ASSERT(lrA.blocked == false);
+
+			for (vint j = 0; j < LOCK_TYPES; j++)
+			{
+				for (vint k = 0; k < LOCK_TYPES; k++)
+				{
+					auto ltB = ltAGen(j);
+					TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
+					TEST_ASSERT(lrB.blocked == !lockCompatibility[j][i]);
+
+					auto lt = ltAGen(k);
+					if (lrB.blocked)
+					{
+						TEST_ASSERT(lm.UpgradeLock(loB, ltB, lt.access, lr) == false);
+						TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
+					}
+					else
+					{
+						TEST_ASSERT(lm.UpgradeLock(loB, ltB, lt.access, lr) == true);
+						TEST_ASSERT(lr.blocked == !lockCompatibility[k][i]);
+						TEST_ASSERT(lm.ReleaseLock(loB, lt) == true);
+					}
+				}
+			}
+
+			TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
+		}
+	}
+}
+using namespace general_lock_testing;
+
 TEST_CASE(Utility_Lock_Table)
 {
 	INIT_LOCK_MANAGER;
-	BufferTransaction lo, loA, loB;
-	LockTarget lt, ltA, ltB;
-	LockResult lr, lrA, lrB;
 	
 	// Lock invalid table will fail
 	lo = transA;
@@ -110,44 +212,14 @@ TEST_CASE(Utility_Lock_Table)
 	lt = {SLOCK, tableA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt) == false);
 
-	// Check lock compatiblity
-	loA = transA;
-	loB = transB;
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableA};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == !lockCompatibility[j][i]);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
+	TestLock(
+		lm,
+		transA,
+		transB,
+		[=](vint a){ return LockTarget{(LockTargetAccess)a, tableA}; },
+		[=](vint a){ return LockTarget{(LockTargetAccess)a, tableB}; }
+		);
 	
-	// Check unrelated lock
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableB};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == false);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
-
 	// Ensure lock released
 	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
 	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
@@ -156,9 +228,6 @@ TEST_CASE(Utility_Lock_Table)
 TEST_CASE(Utility_Lock_Page)
 {
 	INIT_LOCK_MANAGER;
-	BufferTransaction lo, loA, loB;
-	LockTarget lt, ltA, ltB;
-	LockResult lr, lrA, lrB;
 	
 	// Lock invalid table or page will fail
 	lo = transA;
@@ -177,60 +246,13 @@ TEST_CASE(Utility_Lock_Page)
 	lt = {SLOCK, tableA, pageA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt) == false);
 
-	// Check lock compatiblity
-	loA = transA;
-	loB = transB;
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA, pageA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableA, pageA};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == !lockCompatibility[j][i]);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
-	
-	// Check unrelated lock
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA, pageA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableA, pageB};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == false);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
-
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA, pageA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableB, pageA};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == false);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
+	TestLock(
+		lm,
+		transA,
+		transB,
+		[=](vint a){ return LockTarget{(LockTargetAccess)a, tableA, pageA}; },
+		[=](vint a){ return LockTarget{(LockTargetAccess)a, tableA, pageB}; }
+		);
 
 	// Ensure lock released
 	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
@@ -243,9 +265,6 @@ TEST_CASE(Utility_Lock_Row)
 	BufferPointer addA, addB;
 	TEST_ASSERT(bm.EncodePointer(addA, pageA, 0));
 	TEST_ASSERT(bm.EncodePointer(addB, pageB, 0));
-	BufferTransaction lo, loA, loB;
-	LockTarget lt, ltA, ltB;
-	LockResult lr, lrA, lrB;
 	
 	// Lock invalid table or address will fail
 	lo = transA;
@@ -264,67 +283,15 @@ TEST_CASE(Utility_Lock_Row)
 	lt = {SLOCK, tableA, addA}; 
 	TEST_ASSERT(lm.ReleaseLock(lo, lt) == false);
 
-	// Check lock compatiblity
-	loA = transA;
-	loB = transB;
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA, addA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableA, addA};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == !lockCompatibility[j][i]);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
-	
-	// Check unrelated lock
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA, addA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableA, addB};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == false);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
-
-	for (vint i = 0; i < LOCK_TYPES; i++)
-	{
-		ltA = {(LockTargetAccess)i, tableA, addA};
-		TEST_ASSERT(lm.AcquireLock(loA, ltA, lrA) == true);
-		TEST_ASSERT(lrA.blocked == false);
-
-		for (vint j = 0; j < LOCK_TYPES; j++)
-		{
-			ltB = {(LockTargetAccess)j, tableB, addA};
-			TEST_ASSERT(lm.AcquireLock(loB, ltB, lrB) == true);
-			TEST_ASSERT(lrB.blocked == false);
-			TEST_ASSERT(lm.ReleaseLock(loB, ltB) == true);
-		}
-
-		TEST_ASSERT(lm.ReleaseLock(loA, ltA) == true);
-	}
+	TestLock(
+		lm,
+		transA,
+		transB,
+		[=](vint a){ return LockTarget{(LockTargetAccess)a, tableA, addA}; },
+		[=](vint a){ return LockTarget{(LockTargetAccess)a, tableA, addB}; }
+		);
 
 	// Ensure lock released
 	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
 	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
-}
-
-TEST_CASE(Utility_Lock_Hierarchy)
-{
-	INIT_LOCK_MANAGER;
 }
