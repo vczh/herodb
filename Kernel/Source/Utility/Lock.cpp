@@ -471,267 +471,43 @@ LockManager
 
 		bool LockManager::AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result)
 		{
-			if (!CheckInput(owner, target)) return false;
-			if (pendingLocks.Keys().Contains(owner)) return false;
-			Ptr<TableLockInfo> tableLockInfo;
-			Ptr<PageLockInfo> pageLockInfo;
-			Ptr<RowLockInfo> rowLockInfo;
-			BufferPage targetPage;
-			vuint64_t targetOffset = ~(vuint64_t)0;
-
-			SPIN_LOCK(lock)
-			{
-				if (tableLocks.Count() <= target.table.index)
-				{
-					tableLocks.Resize(target.table.index + 1);
-				}
-
-				tableLockInfo = tableLocks[target.table.index];
-				if (!tableLockInfo)
-				{
-					tableLockInfo = new TableLockInfo(target.table);
-					tableLocks[target.table.index] = tableLockInfo;
-				}
-			}
-
-			SPIN_LOCK(tableLockInfo->lock)
-			{
-				switch (target.type)
-				{
-				case LockTargetType::Table:
-					if (AcquireObjectLock(tableLockInfo, owner, target.access))
-					{
-						result.blocked = false;
-						return true;
-					}
-					else
-					{
-						result.blocked = true;
-						return AddPendingLock(owner, target);
-					}
-				case LockTargetType::Page:
-					targetPage = target.page;
-					break;
-				case LockTargetType::Row:
-					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::AcquireLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
-					break;
-				}
-
-				vint index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
-				if (index == -1)
-				{
-					pageLockInfo = new PageLockInfo(target.page);
-					tableLockInfo->pageLocks.Add(targetPage, pageLockInfo);
-				}
-				else
-				{
-					pageLockInfo = tableLockInfo->pageLocks.Values()[index];
-				}
-				pageLockInfo->IncIntent();
-			}
-
-			SPIN_LOCK(pageLockInfo->lock)
-			{
-				switch (target.type)
-				{
-				case LockTargetType::Page:
-					{
-						bool success = true;
-						if (AcquireObjectLock(pageLockInfo, owner, target.access))
-						{
-							result.blocked = false;
-						}
-						else
-						{
-							result.blocked = true;
-							success = AddPendingLock(owner, target);
-						}
-						pageLockInfo->DecIntent();
-						return success;
-					}
-				case LockTargetType::Row:
-					{
-						vint index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
-						if (index == -1)
-						{
-							rowLockInfo = new RowLockInfo(targetOffset);
-							pageLockInfo->rowLocks.Add(targetOffset, rowLockInfo);
-						}
-						else
-						{
-							rowLockInfo = pageLockInfo->rowLocks.Values()[index];
-						}
-						pageLockInfo->DecIntent();
-						rowLockInfo->IncIntent();
-					}
-					break;
-				default:;
-				}
-			}
-
-			SPIN_LOCK(rowLockInfo->lock)
-			{
-				switch (target.type)
-				{
-				case LockTargetType::Row:
-					{
-						bool success = true;
-						if (AcquireObjectLock(rowLockInfo, owner, target.access))
-						{
-							result.blocked = false;
-						}
-						else
-						{
-							result.blocked = true;
-							success = AddPendingLock(owner, target);
-						}
-						rowLockInfo->DecIntent();
-						return success;
-					}
-				default:;
-				}
-			}
-
-			return false;
+			return OperateObjectLock(
+				owner,
+				target,
+				result,
+				&LockManager::AcquireTableLock,
+				&LockManager::AcquirePageLock,
+				&LockManager::AcquireRowLock,
+				true
+				);
 		}
 
 		bool LockManager::ReleaseLock(BufferTransaction owner, const LockTarget& target)
 		{
-			if (!CheckInput(owner, target)) return false;
-			Ptr<TableLockInfo> tableLockInfo;
-			Ptr<PageLockInfo> pageLockInfo;
-			Ptr<RowLockInfo> rowLockInfo;
-			BufferPage targetPage;
-			vuint64_t targetOffset = ~(vuint64_t)0;
-			
-			SPIN_LOCK(lock)
-			{
-				if (tableLocks.Count() <= target.table.index)
-				{
-					return false;
-				}
-
-				tableLockInfo = tableLocks[target.table.index];
-				if (!tableLockInfo)
-				{
-					return false;
-				}
-			}
-
-			SPIN_LOCK(tableLockInfo->lock)
-			{
-				switch (target.type)
-				{
-				case LockTargetType::Table:
-					if (ReleaseObjectLock(tableLockInfo, owner, target.access))
-					{
-						return true;
-					}
-					else
-					{
-						return RemovePendingLock(owner, target);
-					}
-				case LockTargetType::Page:
-					targetPage = target.page;
-					break;
-				case LockTargetType::Row:
-					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::AcquireLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
-					break;
-				};
-
-				vint index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
-				if (index == -1)
-				{
-					return false;
-				}
-				pageLockInfo = tableLockInfo->pageLocks.Values()[index];
-			}
-
-			SPIN_LOCK(pageLockInfo->lock)
-			{
-				switch (target.type)
-				{
-				case LockTargetType::Page:
-					{
-						bool success = true;
-						if (!ReleaseObjectLock(pageLockInfo, owner, target.access))
-						{
-							success = RemovePendingLock(owner, target);
-						}
-
-						if (pageLockInfo->IsEmpty())
-						{
-							SPIN_LOCK(tableLockInfo->lock)
-							{
-								if (!pageLockInfo->IntentedToAcquire())
-								{
-									tableLockInfo->pageLocks.Remove(targetPage);
-								}
-							}
-						}
-
-						return success;
-					}
-				case LockTargetType::Row:
-					{
-						vint index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
-						if (index == -1)
-						{
-							return false;
-						}
-						rowLockInfo = pageLockInfo->rowLocks.Values()[index];
-					}
-					break;
-				default:;
-				}
-			}
-
-			SPIN_LOCK(rowLockInfo->lock)
-			{
-				switch (target.type)
-				{
-				case LockTargetType::Row:
-					{
-						bool success = true;
-						if (!ReleaseObjectLock(rowLockInfo, owner, target.access))
-						{
-							success = RemovePendingLock(owner, target);
-						}
-
-						if (rowLockInfo->IsEmpty())
-						{
-							SPIN_LOCK(pageLockInfo->lock)
-							{
-								if (!rowLockInfo->IntentedToAcquire())
-								{
-									pageLockInfo->rowLocks.Remove(targetOffset);
-								}
-
-								if (pageLockInfo->IsEmpty())
-								{
-									SPIN_LOCK(tableLockInfo->lock)
-									{
-										if (!pageLockInfo->IntentedToAcquire())
-										{
-											tableLockInfo->pageLocks.Remove(targetPage);
-										}
-									}
-								}
-							}
-						}
-
-						return success;
-					}
-				default:;
-				}
-			}
-
-			return false;
+			LockResult result;
+			return OperateObjectLock(
+				owner,
+				target,
+				result,
+				&LockManager::ReleaseTableLock,
+				&LockManager::ReleasePageLock,
+				&LockManager::ReleaseRowLock,
+				false
+				);
 		}
 
 		bool LockManager::UpgradeLock(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result)
 		{
 			return false;
+			/*return OperateObjectLock(
+				owner,
+				target,
+				result,
+				&LockManager::UpgradeTableLock,
+				&LockManager::UpgradePageLock,
+				&LockManager::UpgradeRowLock,
+				false
+				);*/
 		}
 
 		bool LockManager::TableHasLocks(BufferTable table)
