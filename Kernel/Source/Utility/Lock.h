@@ -14,6 +14,11 @@ namespace vl
 {
 	namespace database
 	{
+
+/***********************************************************************
+LockManager (Data Structure)
+***********************************************************************/
+
 		enum class LockTargetType
 		{
 			Table,
@@ -31,6 +36,8 @@ namespace vl
 			Exclusive				= 5, // writing the object
 			NumbersOfLockTypes		= 6,
 		};
+
+#define LOCK_TYPES ((vint)LockTargetAccess::NumbersOfLockTypes)
 
 		struct LockTarget
 		{
@@ -70,6 +77,11 @@ namespace vl
 			{
 			}
 
+			bool IsValid()
+			{
+				return table.IsValid();
+			}
+
 			static bool Compare(const LockTarget& a, const LockTarget& b)
 			{
 				return a.type == b.type
@@ -102,9 +114,15 @@ namespace vl
 			BufferTransaction	rollbackTransaction;
 		};
 
+/***********************************************************************
+LockManager
+***********************************************************************/
+
 		class LockManager : public Object
 		{
 		protected:
+			typedef collections::List<LockTarget>									LockTargetList;
+
 			struct TableInfo
 			{
 				BufferTable			table;
@@ -115,6 +133,8 @@ namespace vl
 			{
 				BufferTransaction	trans;
 				vuint64_t			importance;
+				LockTargetList		acquiredLocks;
+				LockTarget			pendingLock;
 			};
 
 			typedef collections::Dictionary<BufferTable, Ptr<TableInfo>>			TableMap;
@@ -125,9 +145,11 @@ namespace vl
 			TableMap			tables;
 			TransMap			transactions;
 
-		protected:
-			typedef collections::SortedList<BufferTransaction>						TransSet;
+/***********************************************************************
+LockManager (Lock Hierarchy)
+***********************************************************************/
 
+		protected:
 			template<typename T>
 			struct ObjectLockInfo
 			{
@@ -135,35 +157,19 @@ namespace vl
 
 				SpinLock		lock;
 				T				object;
-				volatile vint	intentAcquireCounter; // Fuck clang++ 3.4-1ubuntu3 who will crash if I put "=0" here
-				TransSet		owners[(vint)LockTargetAccess::NumbersOfLockTypes];
+				volatile vint	acquiredLocks[LOCK_TYPES];
 
 				ObjectLockInfo(const T& _object)
 					:object(_object)
-					,intentAcquireCounter(0)
 				{
+					memset((void*)acquiredLocks, 0, sizeof(acquiredLocks));
 				}
 
-				void IncIntent()
+				virtual bool IsEmpty()
 				{
-					INCRC(&intentAcquireCounter);
-				}
-
-				void DecIntent()
-				{
-					DECRC(&intentAcquireCounter);
-				}
-
-				bool IntentedToAcquire()
-				{
-					return intentAcquireCounter > 0;
-				}
-
-				bool IsEmpty()
-				{
-					for (vint i = 0; i < (vint)LockTargetAccess::NumbersOfLockTypes; i++)
+					for (vint i = 0; i < LOCK_TYPES ; i++)
 					{
-						if (owners[i].Count() > 0)
+						if (acquiredLocks[i])
 						{
 							return false;
 						}
@@ -190,6 +196,11 @@ namespace vl
 					:ObjectLockInfo<BufferPage>(page)
 				{
 				}
+
+				bool IsEmpty()override
+				{
+					return rowLocks.Count() == 0 && ObjectLockInfo<BufferPage>::IsEmpty();
+				}
 			};
 
 			typedef collections::Dictionary<BufferPage, Ptr<PageLockInfo>>			PageLockMap;
@@ -202,24 +213,39 @@ namespace vl
 					:ObjectLockInfo<BufferTable>(table)
 				{
 				}
+
+				bool IsEmpty()override
+				{
+					return pageLocks.Count() == 0 && ObjectLockInfo<BufferTable>::IsEmpty();
+				}
 			};
 
 			typedef collections::Array<Ptr<TableLockInfo>>							TableLockArray;
-			typedef collections::Dictionary<BufferTransaction, LockTarget>			PendingLockMap;
+			typedef collections::SortedList<BufferTransaction>						PendingTransList;
 
 			TableLockArray		tableLocks;
-			PendingLockMap		pendingLocks;
+			PendingTransList	pendingTransactions;
 
+/***********************************************************************
+LockManager (ObjectLock)
+***********************************************************************/
+
+		protected:
 			template<typename TInfo>
-			bool				AcquireObjectLock(Ptr<TInfo> lockInfo, BufferTransaction owner, LockTargetAccess access);
+			bool				AcquireObjectLockUnsafe(Ptr<TInfo> lockInfo, Ptr<TransInfo> owner, const LockTarget& target);
 			template<typename TInfo>
-			bool				ReleaseObjectLock(Ptr<TInfo> lockInfo, BufferTransaction owner, LockTargetAccess access);
-			bool				CheckInput(BufferTransaction owner, const LockTarget& target);
-			bool				AddPendingLock(BufferTransaction owner, const LockTarget& target);
-			bool				RemovePendingLock(BufferTransaction owner, const LockTarget& target);
+			bool				ReleaseObjectLockUnsafe(Ptr<TInfo> lockInfo, Ptr<TransInfo> owner, const LockTarget& target);
+			Ptr<TransInfo>		CheckInputUnsafe(BufferTransaction owner, const LockTarget& target);
+			bool				AddPendingLockUnsafe(Ptr<TransInfo> owner, const LockTarget& target);
+			bool				RemovePendingLockUnsafe(Ptr<TransInfo> owner, const LockTarget& target);
+
+/***********************************************************************
+LockManager (Template )
+***********************************************************************/
+
 		protected:
 			template<typename TArgs, typename... TLockInfos>
-			using GenericLockHandler = bool(LockManager::*)(BufferTransaction owner, TArgs arguments, Ptr<TLockInfos>... lockInfo);
+			using GenericLockHandler = bool(LockManager::*)(Ptr<TransInfo> owner, TArgs arguments, Ptr<TLockInfos>... lockInfo);
 
 			using AcquireLockArgs	= Tuple<const LockTarget&, LockResult&>;
 			using ReleaseLockArgs	= const LockTarget&;
@@ -235,21 +261,41 @@ namespace vl
 			template<typename TArgs>
 			bool				OperateObjectLock(BufferTransaction owner, TArgs arguments, TableLockHandler<TArgs> tableLockHandler, PageLockHandler<TArgs> pageLockHandler, RowLockHandler<TArgs> rowLockHandler, bool createLockInfo, bool checkPendingLock);
 
-			template<typename TLockInfo>
-			bool				AcquireGeneralLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TLockInfo> lockInfo);
-			bool				AcquireTableLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
-			bool				AcquirePageLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
-			bool				AcquireRowLock(BufferTransaction owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
+/***********************************************************************
+LockManager (Acquire)
+***********************************************************************/
 
-			bool				ReleaseTableLock(BufferTransaction owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
-			bool				ReleasePageLock(BufferTransaction owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
-			bool				ReleaseRowLock(BufferTransaction owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
-
+		protected:
 			template<typename TLockInfo>
-			bool				UpgradeGeneralLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TLockInfo> lockInfo);
-			bool				UpgradeTableLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
-			bool				UpgradePageLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
-			bool				UpgradeRowLock(BufferTransaction owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
+			bool				AcquireGeneralLock(Ptr<TransInfo> owner, AcquireLockArgs arguments, Ptr<TLockInfo> lockInfo);
+			bool				AcquireTableLock(Ptr<TransInfo> owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
+			bool				AcquirePageLock(Ptr<TransInfo> owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
+			bool				AcquireRowLock(Ptr<TransInfo> owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
+
+/***********************************************************************
+LockManager (Release)
+***********************************************************************/
+
+		protected:
+			bool				ReleaseTableLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
+			bool				ReleasePageLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
+			bool				ReleaseRowLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
+
+/***********************************************************************
+LockManager (Upgrade)
+***********************************************************************/
+
+		protected:
+			template<typename TLockInfo>
+			bool				UpgradeGeneralLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TLockInfo> lockInfo);
+			bool				UpgradeTableLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
+			bool				UpgradePageLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
+			bool				UpgradeRowLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
+
+/***********************************************************************
+LockManager (Interface)
+***********************************************************************/
+
 		public:
 			LockManager(BufferManager* _bm);
 			~LockManager();
@@ -268,6 +314,9 @@ namespace vl
 			void				DetectDeadlock(DeadlockInfo::List& infos);
 			bool				Rollback(BufferTransaction trans);
 		};
+
+#undef LOCK_TYPES
+
 	}
 }
 
