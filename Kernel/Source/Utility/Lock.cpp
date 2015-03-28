@@ -62,7 +62,7 @@ LockManager (ObjectLock)
 			}
 
 			auto result = DECRC(&lockInfo->acquiredLocks[(vint)target.access]);
-			CHECK_ERROR(result >= 0, L"vl::database::LockManager::ReleaseObjectLock(Ptr<TInfo>, Ptr<TransInfo>, const LockTarget&)#Internal error: TInfo::acquiredLocks is corrupted.");
+			CHECK_ERROR(result >= 0, L"vl::database::LockManager::ReleaseObjectLockUnsafe(Ptr<TInfo>, Ptr<TransInfo>, const LockTarget&)#Internal error: TInfo::acquiredLocks is corrupted.");
 			return owner->acquiredLocks.RemoveAt(index);
 		}
 		
@@ -215,7 +215,7 @@ LockManager (Template)
 					targetPage = target.page;
 					break;
 				case LockTargetType::Row:
-					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::AcquireLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
+					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::OperateObjectLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
 					break;
 				}
 
@@ -291,16 +291,13 @@ LockManager (Acquire)
 			if (AcquireObjectLockUnsafe(lockInfo, owner, target))
 			{
 				result.blocked = false;
+				return true;
 			}
 			else
 			{
 				result.blocked = true;
-				SPIN_LOCK(lock)
-				{
-					return AddPendingLockUnsafe(owner, target);
-				}
+				return AddPendingLockUnsafe(owner, target);
 			}
-			return true;
 		}
 
 		bool LockManager::AcquireTableLock(Ptr<TransInfo> owner, AcquireLockArgs arguments, Ptr<TableLockInfo> tableLockInfo)
@@ -326,31 +323,29 @@ LockManager (Release)
 		{
 			const LockTarget& target = arguments;
 
-			if (!ReleaseObjectLockUnsafe(tableLockInfo, owner, target))
+			if (ReleaseObjectLockUnsafe(tableLockInfo, owner, target))
 			{
-				SPIN_LOCK(lock)
-				{
-					return RemovePendingLockUnsafe(owner, target);
-				}
+				return true;
 			}
-			return true;
+			else
+			{
+				return RemovePendingLockUnsafe(owner, target);
+			}
 		}
 
 		bool LockManager::ReleasePageLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
 			const LockTarget& target = arguments;
 
-			bool success = true;
-			if (!ReleaseObjectLockUnsafe(pageLockInfo, owner, target))
+			if (ReleaseObjectLockUnsafe(pageLockInfo, owner, target))
 			{
-				success = RemovePendingLockUnsafe(owner, target);
+				if (pageLockInfo->IsEmpty())
+				{
+					tableLockInfo->pageLocks.Remove(pageLockInfo->object);
+				}
+				return true;
 			}
-
-			if (pageLockInfo->IsEmpty())
-			{
-				tableLockInfo->pageLocks.Remove(pageLockInfo->object);
-			}
-			return success;
+			return RemovePendingLockUnsafe(owner, target);
 		}
 
 		bool LockManager::ReleaseRowLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
@@ -358,20 +353,19 @@ LockManager (Release)
 			const LockTarget& target = arguments;
 
 			bool success = true;
-			if (!ReleaseObjectLockUnsafe(rowLockInfo, owner, target))
+			if (ReleaseObjectLockUnsafe(rowLockInfo, owner, target))
 			{
-				success = RemovePendingLockUnsafe(owner, target);
-			}
-
-			if (rowLockInfo->IsEmpty())
-			{
-				pageLockInfo->rowLocks.Remove(rowLockInfo->object);
-				if (pageLockInfo->IsEmpty())
+				if (rowLockInfo->IsEmpty())
 				{
-					tableLockInfo->pageLocks.Remove(pageLockInfo->object);
+					pageLockInfo->rowLocks.Remove(rowLockInfo->object);
+					if (pageLockInfo->IsEmpty())
+					{
+						tableLockInfo->pageLocks.Remove(pageLockInfo->object);
+					}
 				}
+				return true;
 			}
-			return success;
+			return RemovePendingLockUnsafe(owner, target);
 		}
 
 /***********************************************************************
