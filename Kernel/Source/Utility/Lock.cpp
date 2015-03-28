@@ -230,7 +230,7 @@ LockManager (Template)
 					{
 						return false;
 					}
-					pageLockInfo = new PageLockInfo(target.page);
+					pageLockInfo = new PageLockInfo(targetPage);
 					tableLockInfo->pageLocks.Add(targetPage, pageLockInfo);
 				}
 				else
@@ -345,7 +345,10 @@ LockManager (Release)
 				}
 				return true;
 			}
-			return RemovePendingLockUnsafe(owner, target);
+			else
+			{
+				return RemovePendingLockUnsafe(owner, target);
+			}
 		}
 
 		bool LockManager::ReleaseRowLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
@@ -365,7 +368,10 @@ LockManager (Release)
 				}
 				return true;
 			}
-			return RemovePendingLockUnsafe(owner, target);
+			else
+			{
+				return RemovePendingLockUnsafe(owner, target);
+			}
 		}
 
 /***********************************************************************
@@ -490,7 +496,7 @@ LockManager
 		bool LockManager::AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result)
 		{
 			AcquireLockArgs arguments(target, result);
-			return OperateObjectLock<AcquireLockArgs>(
+			bool success = OperateObjectLock<AcquireLockArgs>(
 				owner,
 				arguments,
 				&LockManager::AcquireTableLock,
@@ -499,13 +505,14 @@ LockManager
 				true,
 				true
 				);
+			return success;
 		}
 
 		bool LockManager::ReleaseLock(BufferTransaction owner, const LockTarget& target)
 		{
 			ReleaseLockArgs arguments = target;
 			LockResult result;
-			return OperateObjectLock<ReleaseLockArgs>(
+			bool success = OperateObjectLock<ReleaseLockArgs>(
 				owner,
 				arguments,
 				&LockManager::ReleaseTableLock,
@@ -514,12 +521,13 @@ LockManager
 				false,
 				false
 				);
+			return success;
 		}
 
 		bool LockManager::UpgradeLock(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result)
 		{
 			UpgradeLockArgs arguments(oldTarget, newAccess, result);
-			return OperateObjectLock<UpgradeLockArgs>(
+			bool success = OperateObjectLock<UpgradeLockArgs>(
 				owner,
 				arguments,
 				&LockManager::UpgradeTableLock,
@@ -528,6 +536,7 @@ LockManager
 				false,
 				true
 				);
+			return success;
 		}
 
 		bool LockManager::TableHasLocks(BufferTable table)
@@ -542,7 +551,7 @@ LockManager
 					return false;
 				}
 				tableLockInfo = tableLocks[table.index];
-				return !tableLockInfo->IsEmpty();
+				return tableLockInfo && !tableLockInfo->IsEmpty();
 			}
 			return false;
 		}
