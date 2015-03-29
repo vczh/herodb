@@ -515,7 +515,7 @@ LockManager
 			SPIN_LOCK(lock)
 			{
 				AcquireLockArgs arguments(target, result, true);
-				bool success = OperateObjectLock<AcquireLockArgs>(
+				success = OperateObjectLock<AcquireLockArgs>(
 					owner,
 					arguments,
 					&LockManager::AcquireTableLock,
