@@ -82,21 +82,31 @@ LockManager (Data Structure)
 				return table.IsValid();
 			}
 
-			static bool Compare(const LockTarget& a, const LockTarget& b)
+			static vint64_t Compare(const LockTarget& a, const LockTarget& b)
 			{
-				return a.type == b.type
-					&& a.access == b.access
-					&& a.table.index == b.table.index
-					&& (
-						(a.type == LockTargetType::Table) ||
-						(a.type == LockTargetType::Page && a.page.index == b.page.index) ||
-						(a.type == LockTargetType::Row && a.address.index == b.address.index)
-					   )
-					;
+				static_assert(sizeof(a.page) == sizeof(a.page), "LockTarget::page/address should be in an union.");
+				static_assert((vint)&((LockTarget*)nullptr)->page == (vint)&((LockTarget*)nullptr)->address, "LockTarget::page/address should be in an union.");
+
+				vuint64_t compare = 0;
+				compare = (vint64_t)a.type - (vint64_t)b.type;
+				if (compare != 0) return compare;
+				compare = (vint64_t)a.access - (vint64_t)b.access;
+				if (compare != 0) return compare;
+				compare = (vint64_t)a.table.index - (vint64_t)b.table.index;
+				if (compare != 0) return compare;
+				if (a.type != LockTargetType::Table)
+				{
+					compare = (vint64_t)a.page.index - (vint64_t)b.page.index;
+				}
+				return compare;
 			}
 
-			bool operator==(const LockTarget& b)const { return Compare(*this, b) == true; }
-			bool operator!=(const LockTarget& b)const { return Compare(*this, b) != true; }
+			bool operator==(const LockTarget& b)const { return Compare(*this, b) == 0; }
+			bool operator!=(const LockTarget& b)const { return Compare(*this, b) != 0; }
+			bool operator< (const LockTarget& b)const { return Compare(*this, b) <  0; }
+			bool operator<=(const LockTarget& b)const { return Compare(*this, b) <= 0; }
+			bool operator> (const LockTarget& b)const { return Compare(*this, b) >  0; }
+			bool operator>=(const LockTarget& b)const { return Compare(*this, b) >= 0; }
 		};
 
 		struct LockResult
@@ -121,7 +131,7 @@ LockManager
 		class LockManager : public Object
 		{
 		protected:
-			typedef collections::List<LockTarget>									LockTargetList;
+			typedef collections::SortedList<LockTarget>								LockTargetList;
 
 			struct TableInfo
 			{
