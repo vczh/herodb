@@ -904,17 +904,36 @@ LockManager (Deadlock)
 					return false;
 				}
 
-				if (!ReleaseLock(trans, transInfo->pendingLock))
+				bool success = OperateObjectLock<ReleaseLockArgs>(
+					trans,
+					transInfo->pendingLock,
+					&LockManager::ReleaseTableLock,
+					&LockManager::ReleasePageLock,
+					&LockManager::ReleaseRowLock,
+					false,
+					false
+					);
+				if (!success)
 				{
 					CHECK_ERROR(false, L"vl::database::LockManager::Rollback(BufferTransaction)#Internal error: Failed to rollback a transaction.");
 				}
 				for (vint i = transInfo->acquiredLocks.Count() - 1; i >= 0; i--)
 				{
-					if (!ReleaseLock(trans, transInfo->acquiredLocks[i]))
+					success = OperateObjectLock<ReleaseLockArgs>(
+						trans,
+						transInfo->acquiredLocks[i],
+						&LockManager::ReleaseTableLock,
+						&LockManager::ReleasePageLock,
+						&LockManager::ReleaseRowLock,
+						false,
+						false
+						);
+					if (!success)
 					{
 						CHECK_ERROR(false, L"vl::database::LockManager::Rollback(BufferTransaction)#Internal error: Failed to rollback a transaction.");
 					}
 				}
+				return true;
 			}
 			return false;
 		}
