@@ -832,6 +832,16 @@ LockManager (Deadlock)
 
 			static Node* ChooseVictim(SortedList<Node*>& nodes, Node* cycle)
 			{
+				FOREACH(Node*, in, cycle->ins)
+				{
+					in->outs.Remove(cycle);
+				}
+				FOREACH(Node*, out, cycle->outs)
+				{
+					out->ins.Remove(cycle);
+				}
+				nodes.Remove(cycle);
+				return cycle;
 			}
 
 			static void DetectDeadlock(LockManager* lm, DeadlockInfo& info)
