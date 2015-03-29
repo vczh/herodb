@@ -890,6 +890,32 @@ LockManager (Deadlock)
 
 		bool LockManager::Rollback(BufferTransaction trans)
 		{
+			SPIN_LOCK(lock)
+			{
+				vint index = transactions.Keys().IndexOf(trans);
+				if (index == -1)
+				{
+					return false;
+				}
+
+				auto transInfo = transactions.Values()[index];
+				if (!transInfo->pendingLock.IsValid())
+				{
+					return false;
+				}
+
+				if (!ReleaseLock(trans, transInfo->pendingLock))
+				{
+					CHECK_ERROR(false, L"vl::database::LockManager::Rollback(BufferTransaction)#Internal error: Failed to rollback a transaction.");
+				}
+				for (vint i = transInfo->acquiredLocks.Count() - 1; i >= 0; i--)
+				{
+					if (!ReleaseLock(trans, transInfo->acquiredLocks[i]))
+					{
+						CHECK_ERROR(false, L"vl::database::LockManager::Rollback(BufferTransaction)#Internal error: Failed to rollback a transaction.");
+					}
+				}
+			}
 			return false;
 		}
 		

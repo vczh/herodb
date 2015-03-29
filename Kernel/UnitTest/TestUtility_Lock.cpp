@@ -414,6 +414,7 @@ TEST_CASE(Utility_Lock_SimpleDeadlock)
 
 	// Rollback
 	auto rollback = info.rollbacks[0];
+	TEST_ASSERT(lm.Rollback(rollback) == true);
 	TEST_ASSERT(lm.ReleaseLock(transA, ltAS) == (transA != rollback));
 	TEST_ASSERT(lm.ReleaseLock(transA, ltBX) == (transA != rollback));
 	TEST_ASSERT(lm.ReleaseLock(transB, ltBS) == (transB != rollback));
