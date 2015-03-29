@@ -499,6 +499,17 @@ LockManager
 		{
 			SPIN_LOCK(lock)
 			{
+				auto index = transactions.Keys().IndexOf(trans);
+				if (index == -1)
+				{
+					return false;
+				}
+
+				auto transInfo = transactions.Values()[index];
+				if (transInfo->acquiredLocks.Count() > 0 || transInfo->pendingLock.IsValid())
+				{
+					return false;
+				}
 				if (!transactions.Keys().Contains(trans))
 				{
 					return false;
@@ -612,10 +623,11 @@ LockManager
 							&LockManager::AcquirePageLock,
 							&LockManager::AcquireRowLock,
 							true,
-							true
+							false
 							);
+						CHECK_ERROR(success, L"vl::database::LockManager::PickTransaction(LockResult&)#Internal error: Wrong arguments provided to acquire lock.");
 
-						if (success)
+						if (!result.blocked)
 						{
 							transInfo->pendingLock = LockTarget();
 							pendingInfo->transactions.RemoveAt(pendingInfo->lastTryIndex);

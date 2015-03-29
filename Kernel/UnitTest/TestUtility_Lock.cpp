@@ -75,12 +75,15 @@ TEST_CASE(Utility_Lock_Registering)
 	LockManager lm(&bm);									\
 	BufferTable tableA{1}, tableB{2};						\
 	BufferTransaction transA{1}, transB{2};					\
+	BufferTransaction transC{3}, transD{4};					\
 	BufferPage pageA = bm.AllocatePage(source);				\
 	BufferPage pageB = bm.AllocatePage(source);				\
 	TEST_ASSERT(lm.RegisterTable(tableA, source) == true);	\
 	TEST_ASSERT(lm.RegisterTable(tableB, source) == true);	\
 	TEST_ASSERT(lm.RegisterTransaction(transA, 0) == true);	\
 	TEST_ASSERT(lm.RegisterTransaction(transB, 0) == true);	\
+	TEST_ASSERT(lm.RegisterTransaction(transC, 1) == true);	\
+	TEST_ASSERT(lm.RegisterTransaction(transD, 1) == true);	\
 	BufferTransaction lo;									\
 	LockTarget lt;											\
 	LockResult lr;											\
@@ -90,6 +93,10 @@ TEST_CASE(Utility_Lock_Registering)
 #define ROW LockTargetType::Row
 #define SLOCK LockTargetAccess::Shared
 #define XLOCK LockTargetAccess::Exclusive
+#define ISLOCK LockTargetAccess::IntentShared
+#define IXLOCK LockTargetAccess::IntentExclusive
+#define SIXLOCK LockTargetAccess::SharedIntentExclusive
+#define ULOCK LockTargetAccess::Update
 
 namespace general_lock_testing
 {
@@ -292,4 +299,54 @@ TEST_CASE(Utility_Lock_Row)
 	// Ensure lock released
 	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
 	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
+}
+
+TEST_CASE(Utility_Lock_PickTransaction)
+{
+	INIT_LOCK_MANAGER;
+
+	LockTarget ltS = {SLOCK, tableA};
+	LockTarget ltX = {XLOCK, tableA};
+
+	// Importance (1)
+
+	TEST_ASSERT(lm.AcquireLock(transA, ltS, lr) == true);
+	TEST_ASSERT(lr.blocked == false);
+	TEST_ASSERT(lm.AcquireLock(transB, ltX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.AcquireLock(transC, ltX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.PickTransaction(lr) == BufferTransaction::Invalid());
+
+	TEST_ASSERT(lm.ReleaseLock(transA, ltS) == true);
+	TEST_ASSERT(lm.PickTransaction(lr) == transC);
+	TEST_ASSERT(lr.blocked == false);
+
+	TEST_ASSERT(lm.ReleaseLock(transC, ltX) == true);
+	TEST_ASSERT(lm.PickTransaction(lr) == transB);
+	TEST_ASSERT(lr.blocked == false);
+
+	TEST_ASSERT(lm.ReleaseLock(transB, ltX) == true);
+	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
+
+	// Importance (2)
+
+	TEST_ASSERT(lm.AcquireLock(transA, ltS, lr) == true);
+	TEST_ASSERT(lr.blocked == false);
+	TEST_ASSERT(lm.AcquireLock(transC, ltX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.AcquireLock(transB, ltX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.PickTransaction(lr) == BufferTransaction::Invalid());
+
+	TEST_ASSERT(lm.ReleaseLock(transA, ltS) == true);
+	TEST_ASSERT(lm.PickTransaction(lr) == transC);
+	TEST_ASSERT(lr.blocked == false);
+
+	TEST_ASSERT(lm.ReleaseLock(transC, ltX) == true);
+	TEST_ASSERT(lm.PickTransaction(lr) == transB);
+	TEST_ASSERT(lr.blocked == false);
+
+	TEST_ASSERT(lm.ReleaseLock(transB, ltX) == true);
+	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
 }
