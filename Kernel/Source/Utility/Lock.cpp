@@ -430,7 +430,7 @@ LockManager (Upgrade)
 		}
 
 /***********************************************************************
-LockManager
+LockManager (ctor/dtor)
 ***********************************************************************/
 
 		LockManager::LockManager(BufferManager* _bm)
@@ -441,6 +441,10 @@ LockManager
 		LockManager::~LockManager()
 		{
 		}
+
+/***********************************************************************
+LockManager (Registration)
+***********************************************************************/
 
 		bool LockManager::RegisterTable(BufferTable table, BufferSource source)
 		{
@@ -520,6 +524,10 @@ LockManager
 			return true;
 		}
 
+/***********************************************************************
+LockManager (Lock Operation)
+***********************************************************************/
+
 		bool LockManager::AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result)
 		{
 			bool success = false;
@@ -595,6 +603,10 @@ LockManager
 			return false;
 		}
 
+/***********************************************************************
+LockManager (Scheduler)
+***********************************************************************/
+
 		BufferTransaction LockManager::PickTransaction(LockResult& result)
 		{
 			SPIN_LOCK(lock)
@@ -645,8 +657,180 @@ LockManager
 			return BufferTransaction::Invalid();
 		}
 
-		void LockManager::DetectDeadlock(DeadlockInfo::List& infos)
+/***********************************************************************
+LockManager (Deadlock)
+***********************************************************************/
+
+		class DeadlockDetection
 		{
+		public:
+			struct Node
+			{
+				Ptr<LockManager::TransInfo>			transInfo;
+				SortedList<vint>					acquired;
+				SortedList<Node*>					ins;
+				SortedList<Node*>					outs;
+
+				Node*								previous = nullptr;
+				vint								index = -1;
+			};
+
+			static void BuildGraph(LockManager* lm, List<Node*>& nodes)
+			{
+				FOREACH(Ptr<LockManager::PendingInfo>, pendingInfo, lm->pendings.Values())
+				{
+					FOREACH(BufferTransaction, trans, pendingInfo->transactions)
+					{
+						auto node = new Node;
+						node->transInfo = lm->transactions[trans];
+						nodes.Add(node);
+					}
+				}
+
+				FOREACH(Node*, from, nodes)
+				{
+					auto pending = from->transInfo->pendingLock;
+					auto access = pending.access;
+					CHECK_ERROR(pending.IsValid(), L"vl::database::DeadlockDetection::BuildGraph(LockManager*, List<DeadlockDetection::Node*>&)#Internal error: Field pendings is corrupted.");
+					FOREACH(Node*, to, nodes)
+					{
+						for (vint i = 0; i < to->transInfo->acquiredLocks.Count(); i++)
+						{
+							const auto& acquired = to->transInfo->acquiredLocks[i];
+							pending.access = acquired.access;
+							if (pending == acquired && !lockCompatibility[(vint)access][(vint)acquired.access])
+							{
+								if (!to->acquired.Contains(i))
+								{
+									to->acquired.Add(i);
+								}
+								from->outs.Add(to);
+								to->ins.Add(from);
+							}
+						}
+					}
+				}
+			}
+
+			static void DeleteGraph(List<Node*>& nodes)
+			{
+				FOREACH(Node*, node, nodes)
+				{
+					delete node;
+				}
+			}
+
+			static bool TestReducableNode(SortedList<Node*>& nodes, Node* node)
+			{
+				if (node->ins.Count() * node->outs.Count() == 0)
+				{
+					if (!nodes.Contains(node))
+					{
+						nodes.Add(node);
+					}
+					return true;
+				}
+				return false;
+			}
+
+			static void ReduceNode(SortedList<Node*>& nodes, Node* node, vint& index)
+			{
+				vint position = nodes.IndexOf(node);
+				CHECK_ERROR(position >= 0, L"vl::database::DeadlockDetection::ReduceNode(SortedList<DeadlockDetection::Node*>&, DeadlockDetection::Node*, vint&)#Internal error: Deadlock graph corrupted.");
+				nodes.RemoveAt(position);
+				if (position < index)
+				{
+					index--;
+				}
+			}
+
+			static void ReduceGraph(SortedList<Node*>& nodes)
+			{
+				vint index = 0;
+				SortedList<Node*> affected;
+				while (index < nodes.Count())
+				{
+					auto node = nodes[index++];
+					if (TestReducableNode(affected, node))
+					{
+						while (affected.Count() > 0)
+						{
+							node = affected[affected.Count() - 1];
+							ReduceNode(nodes, node, index);
+							affected.RemoveAt(affected.Count() - 1);
+
+							FOREACH(Node*, in, node->ins)
+							{
+								in->outs.Remove(node);
+								TestReducableNode(affected, in);
+							}
+							FOREACH(Node*, out, node->outs)
+							{
+								out->ins.Remove(node);
+								TestReducableNode(affected, out);
+							}
+						}
+						affected.Clear();
+					}
+				}
+			}
+
+			static Node* FindCycle(SortedList<Node*>& nodes, SortedList<Node*>& involved)
+			{
+				if (nodes.Count() == 0)
+				{
+					return nullptr;
+				}
+
+				Node* current = nodes[0];
+			}
+
+			static Node* ChooseVictim(SortedList<Node*>& nodes, Node* cycle)
+			{
+			}
+
+			static void DetectDeadlock(LockManager* lm, DeadlockInfo& info)
+			{
+				List<Node*> allNodes;
+				SortedList<Node*> nodes, involved;
+				BuildGraph(lm, allNodes);
+				CopyFrom(nodes, allNodes);
+
+				while (true)
+				{
+					ReduceGraph(nodes);
+					auto cycle = FindCycle(nodes, involved);
+
+					if (cycle)
+					{
+						auto rollback = ChooseVictim(nodes, cycle);
+						info.rollbacks.Add(rollback->transInfo->trans);
+					}
+					else
+					{
+						CHECK_ERROR(nodes.Count() == 0, L"vl::database::DeadlockDetection::DetectDeadlock(DeadlockInfo&)#Internal error: Unable to pick a victim from deadlocked transactions.");
+						break;
+					}
+				}
+
+				FOREACH(Node*, node, involved)
+				{
+					info.pending.Add(node->transInfo->trans, node->transInfo->pendingLock);
+					FOREACH(vint, acquired, node->acquired)
+					{
+						info.acquired.Add(node->transInfo->trans, node->transInfo->acquiredLocks[acquired]);
+					}
+				}
+				DeleteGraph(allNodes);
+			}
+		};
+
+		void LockManager::DetectDeadlock(DeadlockInfo& info)
+		{
+			SPIN_LOCK(lock)
+			{
+				DeadlockDetection::DetectDeadlock(this, info);
+			}
 		}
 
 		bool LockManager::Rollback(BufferTransaction trans)

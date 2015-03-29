@@ -117,7 +117,6 @@ LockManager (Data Structure)
 
 		struct DeadlockInfo
 		{
-			typedef collections::List<Ptr<DeadlockInfo>>							List;
 			typedef collections::List<BufferTransaction>							TransactionList;
 			typedef collections::Dictionary<BufferTransaction, LockTarget>			TransactionMap;
 			typedef collections::Group<BufferTransaction, LockTarget>				TransactionGroup;
@@ -131,8 +130,11 @@ LockManager (Data Structure)
 LockManager
 ***********************************************************************/
 
+		class DeadlockDetection;
+
 		class LockManager : public Object
 		{
+			friend class DeadlockDetection;
 		protected:
 			typedef collections::SortedList<LockTarget>								LockTargetList;
 
@@ -350,7 +352,7 @@ LockManager (Interface)
 			bool					TableHasLocks(BufferTable table);
 
 			BufferTransaction		PickTransaction(LockResult& result);
-			void					DetectDeadlock(DeadlockInfo::List& infos);
+			void					DetectDeadlock(DeadlockInfo& info);
 			bool					Rollback(BufferTransaction trans);
 		};
 
