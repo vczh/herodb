@@ -672,7 +672,8 @@ LockManager (Deadlock)
 				SortedList<Node*>					outs;
 
 				Node*								previous = nullptr;
-				vint								index = -1;
+				vint								next = -1;
+				bool								touched = false;
 			};
 
 			static void BuildGraph(LockManager* lm, List<Node*>& nodes)
@@ -775,14 +776,58 @@ LockManager (Deadlock)
 				}
 			}
 
-			static Node* FindCycle(SortedList<Node*>& nodes, SortedList<Node*>& involved)
+			static Node* FindCycle(SortedList<Node*>& nodes)
 			{
 				if (nodes.Count() == 0)
 				{
 					return nullptr;
 				}
+				FOREACH(Node*, node, nodes)
+				{
+					node->previous = nullptr;
+					node->next = -1;
+					node->touched = false;
+				}
 
-				Node* current = nodes[0];
+				auto current = nodes[0];
+				while (true)
+				{
+					CHECK_ERROR(current != nullptr, L"vl::database::DeadlockDetection::FindCycle(SortedList<DeadlockDetection::Node*>&, SortedList<DeadlockDetection::Node*>&)#Internal error: Failed to find a cycle, ReduceGraph does not work correctly.");
+					current->touched = true;
+					if (++current->next < current->outs.Count())
+					{
+						auto next = current->outs[current->next];
+						if (next->next != -1)
+						{
+							next->previous = current;
+							return next;
+						}
+						else if (!next->touched)
+						{
+							next->previous = current;
+							current = next;
+						}
+					}
+					else
+					{
+						auto previous = current->previous;
+						current->previous = nullptr;
+						current = previous;
+					}
+				}
+			}
+
+			static void SaveCycle(SortedList<Node*>& involved, Node* cycle)
+			{
+				auto current = cycle;
+				do
+				{
+					if (!involved.Contains(current))
+					{
+						involved.Add(current);
+					}
+					current = current->previous;
+				} while (current != cycle);
 			}
 
 			static Node* ChooseVictim(SortedList<Node*>& nodes, Node* cycle)
@@ -799,16 +844,16 @@ LockManager (Deadlock)
 				while (true)
 				{
 					ReduceGraph(nodes);
-					auto cycle = FindCycle(nodes, involved);
+					auto cycle = FindCycle(nodes);
 
 					if (cycle)
 					{
+						SaveCycle(involved, cycle);
 						auto rollback = ChooseVictim(nodes, cycle);
 						info.rollbacks.Add(rollback->transInfo->trans);
 					}
 					else
 					{
-						CHECK_ERROR(nodes.Count() == 0, L"vl::database::DeadlockDetection::DetectDeadlock(DeadlockInfo&)#Internal error: Unable to pick a victim from deadlocked transactions.");
 						break;
 					}
 				}
