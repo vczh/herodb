@@ -118,10 +118,13 @@ LockManager (Data Structure)
 		struct DeadlockInfo
 		{
 			typedef collections::List<Ptr<DeadlockInfo>>							List;
-			typedef collections::Group<BufferTransaction::IndexType, LockTarget>	TransactionGroup;
+			typedef collections::List<BufferTransaction>							TransactionList;
+			typedef collections::Dictionary<BufferTransaction, LockTarget>			TransactionMap;
+			typedef collections::Group<BufferTransaction, LockTarget>				TransactionGroup;
 
-			TransactionGroup		involvedTransactions;
-			BufferTransaction		rollbackTransaction;
+			TransactionGroup		acquired;
+			TransactionMap			pending;
+			TransactionList			rollbacks;
 		};
 
 /***********************************************************************
