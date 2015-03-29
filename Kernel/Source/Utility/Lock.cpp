@@ -43,7 +43,7 @@ LockManager (ObjectLock)
 				}
 			}
 
-			INCRC(&lockInfo->acquiredLocks[access]);
+			lockInfo->acquiredLocks[access]++;
 			owner->acquiredLocks.Add(target);
 			return true;
 		}
@@ -61,7 +61,7 @@ LockManager (ObjectLock)
 				return false;
 			}
 
-			auto result = DECRC(&lockInfo->acquiredLocks[(vint)target.access]);
+			auto result = --lockInfo->acquiredLocks[(vint)target.access];
 			CHECK_ERROR(result >= 0, L"vl::database::LockManager::ReleaseObjectLockUnsafe(Ptr<TInfo>, Ptr<TransInfo>, const LockTarget&)#Internal error: TInfo::acquiredLocks is corrupted.");
 			return owner->acquiredLocks.RemoveAt(index);
 		}
@@ -103,13 +103,24 @@ LockManager (ObjectLock)
 				return false;
 			}
 
-			vint index = pendingTransactions.IndexOf(owner->trans);
+			Ptr<PendingInfo> pendingInfo;
+			vint index = pendings.Keys().IndexOf(owner->importance);
+			if (index == -1)
+			{
+				pendingInfo = new PendingInfo;
+				pendings.Add(owner->importance, pendingInfo);
+			}
+			else
+			{
+				pendingInfo = pendings.Values()[index];
+			}
+
+			index = pendingInfo->transactions.IndexOf(owner->trans);
 			if (index != -1)
 			{
 				return false;
 			}
-
-			pendingTransactions.Add(owner->trans);
+			pendingInfo->transactions.Add(owner->trans);
 			owner->pendingLock = target;
 			return true;
 		}
@@ -121,13 +132,20 @@ LockManager (ObjectLock)
 				return false;
 			}
 
-			vint index = pendingTransactions.IndexOf(owner->trans);
+			vint index = pendings.Keys().IndexOf(owner->importance);
+			if (index == -1)
+			{
+				return false;
+			}
+			auto pendingInfo = pendings.Values()[index];
+
+			index = pendingInfo->transactions.IndexOf(owner->trans);
 			if (index == -1)
 			{
 				return false;
 			}
 
-			pendingTransactions.RemoveAt(index);
+			pendingInfo->transactions.RemoveAt(index);
 			owner->pendingLock = LockTarget();
 			return true;
 		}
