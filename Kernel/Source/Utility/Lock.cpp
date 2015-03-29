@@ -184,114 +184,111 @@ LockManager (Template)
 			vuint64_t targetOffset = ~(vuint64_t)0;
 			vint index = -1;
 
-			SPIN_LOCK(lock)
-			{
-				///////////////////////////////////////////////////////////
-				// Check Input
-				///////////////////////////////////////////////////////////
+			///////////////////////////////////////////////////////////
+			// Check Input
+			///////////////////////////////////////////////////////////
 
-				auto transInfo = CheckInputUnsafe(owner, target);
-				if (!transInfo) return false;
-				if (checkPendingLock && transInfo->pendingLock.IsValid())
+			auto transInfo = CheckInputUnsafe(owner, target);
+			if (!transInfo) return false;
+			if (checkPendingLock && transInfo->pendingLock.IsValid())
+			{
+				return false;
+			}
+
+			///////////////////////////////////////////////////////////
+			// Find TableLock
+			///////////////////////////////////////////////////////////
+
+			if (tableLocks.Count() <= target.table.index)
+			{
+				if (!createLockInfo)
 				{
 					return false;
 				}
+				tableLocks.Resize(target.table.index + 1);
+			}
 
-				///////////////////////////////////////////////////////////
-				// Find TableLock
-				///////////////////////////////////////////////////////////
-
-				if (tableLocks.Count() <= target.table.index)
+			tableLockInfo = tableLocks[target.table.index];
+			if (!tableLockInfo)
+			{
+				if (!createLockInfo)
 				{
-					if (!createLockInfo)
-					{
-						return false;
-					}
-					tableLocks.Resize(target.table.index + 1);
+					return false;
 				}
+				tableLockInfo = new TableLockInfo(target.table);
+				tableLocks[target.table.index] = tableLockInfo;
+			}
 
-				tableLockInfo = tableLocks[target.table.index];
-				if (!tableLockInfo)
+			///////////////////////////////////////////////////////////
+			// Process TableLock
+			///////////////////////////////////////////////////////////
+
+			switch (target.type)
+			{
+			case LockTargetType::Table:
+				return (this->*tableLockHandler)(transInfo, arguments, tableLockInfo);
+			case LockTargetType::Page:
+				targetPage = target.page;
+				break;
+			case LockTargetType::Row:
+				CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::OperateObjectLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
+				break;
+			}
+
+			///////////////////////////////////////////////////////////
+			// Find PageLock
+			///////////////////////////////////////////////////////////
+
+			index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
+			if (index == -1)
+			{
+				if (!createLockInfo)
 				{
-					if (!createLockInfo)
-					{
-						return false;
-					}
-					tableLockInfo = new TableLockInfo(target.table);
-					tableLocks[target.table.index] = tableLockInfo;
+					return false;
 				}
+				pageLockInfo = new PageLockInfo(targetPage);
+				tableLockInfo->pageLocks.Add(targetPage, pageLockInfo);
+			}
+			else
+			{
+				pageLockInfo = tableLockInfo->pageLocks.Values()[index];
+			}
 
-				///////////////////////////////////////////////////////////
-				// Process TableLock
-				///////////////////////////////////////////////////////////
+			///////////////////////////////////////////////////////////
+			// Process PageLock
+			///////////////////////////////////////////////////////////
 
-				switch (target.type)
+			if (target.type == LockTargetType::Page)
+			{
+				return (this->*pageLockHandler)(transInfo, arguments, tableLockInfo, pageLockInfo);
+			}
+
+			///////////////////////////////////////////////////////////
+			// Find RowLock
+			///////////////////////////////////////////////////////////
+
+			index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
+			if (index == -1)
+			{
+				if (!createLockInfo)
 				{
-				case LockTargetType::Table:
-					return (this->*tableLockHandler)(transInfo, arguments, tableLockInfo);
-				case LockTargetType::Page:
-					targetPage = target.page;
-					break;
-				case LockTargetType::Row:
-					CHECK_ERROR(bm->DecodePointer(target.address, targetPage, targetOffset), L"vl::database::LockManager::OperateObjectLock(BufferTransaction, const LockTarget&, LockResult&)#Internal error: Unable to decode row pointer.");
-					break;
+					return false;
 				}
+				rowLockInfo = new RowLockInfo(targetOffset);
+				pageLockInfo->rowLocks.Add(targetOffset, rowLockInfo);
+			}
+			else
+			{
+				rowLockInfo = pageLockInfo->rowLocks.Values()[index];
+			}
 
-				///////////////////////////////////////////////////////////
-				// Find PageLock
-				///////////////////////////////////////////////////////////
+			///////////////////////////////////////////////////////////
+			// Process RowLock
+			///////////////////////////////////////////////////////////
 
-				index = tableLockInfo->pageLocks.Keys().IndexOf(targetPage);
-				if (index == -1)
-				{
-					if (!createLockInfo)
-					{
-						return false;
-					}
-					pageLockInfo = new PageLockInfo(targetPage);
-					tableLockInfo->pageLocks.Add(targetPage, pageLockInfo);
-				}
-				else
-				{
-					pageLockInfo = tableLockInfo->pageLocks.Values()[index];
-				}
-
-				///////////////////////////////////////////////////////////
-				// Process PageLock
-				///////////////////////////////////////////////////////////
-
-				if (target.type == LockTargetType::Page)
-				{
-					return (this->*pageLockHandler)(transInfo, arguments, tableLockInfo, pageLockInfo);
-				}
-
-				///////////////////////////////////////////////////////////
-				// Find RowLock
-				///////////////////////////////////////////////////////////
-
-				index = pageLockInfo->rowLocks.Keys().IndexOf(targetOffset);
-				if (index == -1)
-				{
-					if (!createLockInfo)
-					{
-						return false;
-					}
-					rowLockInfo = new RowLockInfo(targetOffset);
-					pageLockInfo->rowLocks.Add(targetOffset, rowLockInfo);
-				}
-				else
-				{
-					rowLockInfo = pageLockInfo->rowLocks.Values()[index];
-				}
-
-				///////////////////////////////////////////////////////////
-				// Process RowLock
-				///////////////////////////////////////////////////////////
-
-				if (target.type == LockTargetType::Row)
-				{
-					return (this->*rowLockHandler)(transInfo, arguments, tableLockInfo, pageLockInfo, rowLockInfo);
-				}
+			if (target.type == LockTargetType::Row)
+			{
+				return (this->*rowLockHandler)(transInfo, arguments, tableLockInfo, pageLockInfo, rowLockInfo);
 			}
 
 			return false;
@@ -305,6 +302,7 @@ LockManager (Acquire)
 		{
 			const LockTarget& target = arguments.f0;
 			LockResult& result = arguments.f1;
+			bool addPendingLock = arguments.f2;
 
 			if (AcquireObjectLockUnsafe(lockInfo, owner, target))
 			{
@@ -314,7 +312,7 @@ LockManager (Acquire)
 			else
 			{
 				result.blocked = true;
-				return AddPendingLockUnsafe(owner, target);
+				return !addPendingLock || AddPendingLockUnsafe(owner, target);
 			}
 		}
 
@@ -411,7 +409,7 @@ LockManager (Upgrade)
 			{
 				LockTarget newTarget = oldTarget;
 				newTarget.access = newAccess;
-				AcquireLockArgs newArguments(newTarget, result);
+				AcquireLockArgs newArguments(newTarget, result, true);
 				return AcquireGeneralLock(owner, newArguments, lockInfo);
 			}
 		}
@@ -513,47 +511,59 @@ LockManager
 
 		bool LockManager::AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result)
 		{
-			AcquireLockArgs arguments(target, result);
-			bool success = OperateObjectLock<AcquireLockArgs>(
-				owner,
-				arguments,
-				&LockManager::AcquireTableLock,
-				&LockManager::AcquirePageLock,
-				&LockManager::AcquireRowLock,
-				true,
-				true
-				);
+			bool success = false;
+			SPIN_LOCK(lock)
+			{
+				AcquireLockArgs arguments(target, result, true);
+				bool success = OperateObjectLock<AcquireLockArgs>(
+					owner,
+					arguments,
+					&LockManager::AcquireTableLock,
+					&LockManager::AcquirePageLock,
+					&LockManager::AcquireRowLock,
+					true,
+					true
+					);
+			}
 			return success;
 		}
 
 		bool LockManager::ReleaseLock(BufferTransaction owner, const LockTarget& target)
 		{
-			ReleaseLockArgs arguments = target;
-			LockResult result;
-			bool success = OperateObjectLock<ReleaseLockArgs>(
-				owner,
-				arguments,
-				&LockManager::ReleaseTableLock,
-				&LockManager::ReleasePageLock,
-				&LockManager::ReleaseRowLock,
-				false,
-				false
-				);
+			bool success = false;
+			SPIN_LOCK(lock)
+			{
+				ReleaseLockArgs arguments = target;
+				LockResult result;
+				success = OperateObjectLock<ReleaseLockArgs>(
+					owner,
+					arguments,
+					&LockManager::ReleaseTableLock,
+					&LockManager::ReleasePageLock,
+					&LockManager::ReleaseRowLock,
+					false,
+					false
+					);
+			}
 			return success;
 		}
 
 		bool LockManager::UpgradeLock(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result)
 		{
-			UpgradeLockArgs arguments(oldTarget, newAccess, result);
-			bool success = OperateObjectLock<UpgradeLockArgs>(
-				owner,
-				arguments,
-				&LockManager::UpgradeTableLock,
-				&LockManager::UpgradePageLock,
-				&LockManager::UpgradeRowLock,
-				false,
-				true
-				);
+			bool success = false;
+			SPIN_LOCK(lock)
+			{
+				UpgradeLockArgs arguments(oldTarget, newAccess, result);
+				success = OperateObjectLock<UpgradeLockArgs>(
+					owner,
+					arguments,
+					&LockManager::UpgradeTableLock,
+					&LockManager::UpgradePageLock,
+					&LockManager::UpgradeRowLock,
+					false,
+					true
+					);
+			}
 			return success;
 		}
 
@@ -576,6 +586,50 @@ LockManager
 
 		BufferTransaction LockManager::PickTransaction(LockResult& result)
 		{
+			SPIN_LOCK(lock)
+			{
+				for (vint i = pendings.Count() - 1; i >= 0; i--)
+				{
+					auto pendingInfo = pendings.Values()[i];
+					auto stopIndex = pendingInfo->lastTryIndex;
+					if (stopIndex == -1)
+					{
+						stopIndex = pendingInfo->transactions.Count() - 1;
+					}
+
+					do
+					{
+						pendingInfo->lastTryIndex = (pendingInfo->lastTryIndex + 1) % pendingInfo->transactions.Count();
+						auto trans = pendingInfo->transactions[pendingInfo->lastTryIndex];
+						auto transInfo = transactions[trans];
+						CHECK_ERROR(transInfo->pendingLock.IsValid(), L"vl::database::LockManager::PickTransaction(LockResult&)#Internal error: Field pendings is corrupted.");
+
+						AcquireLockArgs arguments(transInfo->pendingLock, result, false);
+						bool success = OperateObjectLock<AcquireLockArgs>(
+							transInfo->trans,
+							arguments,
+							&LockManager::AcquireTableLock,
+							&LockManager::AcquirePageLock,
+							&LockManager::AcquireRowLock,
+							true,
+							true
+							);
+
+						if (success)
+						{
+							transInfo->pendingLock = LockTarget();
+							pendingInfo->transactions.RemoveAt(pendingInfo->lastTryIndex);
+							pendingInfo->lastTryIndex--;
+
+							if (pendingInfo->transactions.Count() == 0)
+							{
+								pendings.Remove(pendings.Keys()[i]);
+							}
+							return transInfo->trans;
+						}
+					} while (pendingInfo->lastTryIndex != stopIndex);
+				}
+			}
 			return BufferTransaction::Invalid();
 		}
 

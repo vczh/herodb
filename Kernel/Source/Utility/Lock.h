@@ -245,7 +245,7 @@ LockManager (Lock Hierarchy -- PendingLock)
 			struct PendingInfo
 			{
 				PendingTransList	transactions;
-				vint				nextTryIndex = -1;
+				vint				lastTryIndex = -1;
 			};
 
 			typedef collections::Dictionary<vuint64_t, Ptr<PendingInfo>>			PendingMap;
@@ -273,7 +273,7 @@ LockManager (Template )
 			template<typename TArgs, typename... TLockInfos>
 			using GenericLockHandler = bool(LockManager::*)(Ptr<TransInfo> owner, TArgs arguments, Ptr<TLockInfos>... lockInfo);
 
-			using AcquireLockArgs	= Tuple<const LockTarget&, LockResult&>;
+			using AcquireLockArgs	= Tuple<const LockTarget&, LockResult&, bool>;
 			using ReleaseLockArgs	= const LockTarget&;
 			using UpgradeLockArgs	= Tuple<const LockTarget&, LockTargetAccess, LockResult&>;
 			
