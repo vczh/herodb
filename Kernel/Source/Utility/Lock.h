@@ -287,6 +287,8 @@ LockManager (Template)
 		protected:
 			template<typename TArgs, typename... TLockInfos>
 			using GenericLockHandler = bool(LockManager::*)(Ptr<TransInfo> owner, TArgs arguments, Ptr<TLockInfos>... lockInfo);
+			template<typename TArgs>
+			using PreLockHandler	= bool(LockManager::*)(Ptr<TransInfo> owner, TArgs arguments, bool& stopped);
 
 			using AcquireLockArgs	= Tuple<const LockTarget&, LockResult&, bool>;
 			using ReleaseLockArgs	= const LockTarget&;
@@ -300,7 +302,7 @@ LockManager (Template)
 			using RowLockHandler	= GenericLockHandler<TArgs, TableLockInfo, PageLockInfo, RowLockInfo>;
 
 			template<typename TArgs>
-			bool				OperateObjectLock(BufferTransaction owner, TArgs arguments, TableLockHandler<TArgs> tableLockHandler, PageLockHandler<TArgs> pageLockHandler, RowLockHandler<TArgs> rowLockHandler, bool createLockInfo, bool checkPendingLock);
+			bool					OperateObjectLock(BufferTransaction owner, TArgs arguments, PreLockHandler<TArgs> preLockHandler, TableLockHandler<TArgs> tableLockHandler, PageLockHandler<TArgs> pageLockHandler, RowLockHandler<TArgs> rowLockHandler, bool createLockInfo, bool checkPendingLock);
 
 /***********************************************************************
 LockManager (Acquire)
@@ -318,6 +320,7 @@ LockManager (Release)
 ***********************************************************************/
 
 		protected:
+			bool					ReleasePreLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, bool& stopped);
 			bool					ReleaseTableLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
 			bool					ReleasePageLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
 			bool					ReleaseRowLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);

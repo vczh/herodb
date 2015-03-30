@@ -169,6 +169,7 @@ LockManager (Template)
 		bool LockManager::OperateObjectLock(
 			BufferTransaction owner,
 			TArgs arguments,
+			PreLockHandler<TArgs> preLockHandler,
 			TableLockHandler<TArgs> tableLockHandler,
 			PageLockHandler<TArgs> pageLockHandler,
 			RowLockHandler<TArgs> rowLockHandler,
@@ -176,24 +177,38 @@ LockManager (Template)
 			bool checkPendingLock
 			)
 		{
-			const LockTarget& target = GetLockTarget(arguments);
-			Ptr<TableLockInfo> tableLockInfo;
-			Ptr<PageLockInfo> pageLockInfo;
-			Ptr<RowLockInfo> rowLockInfo;
-			BufferPage targetPage;
-			vuint64_t targetOffset = ~(vuint64_t)0;
-			vint index = -1;
-
 			///////////////////////////////////////////////////////////
 			// Check Input
 			///////////////////////////////////////////////////////////
 
+			const LockTarget& target = GetLockTarget(arguments);
 			auto transInfo = CheckInputUnsafe(owner, target);
 			if (!transInfo) return false;
 			if (checkPendingLock && transInfo->pendingLock.IsValid())
 			{
 				return false;
 			}
+
+			if (preLockHandler)
+			{
+				bool stopped = false;
+				bool success = (this->*preLockHandler)(transInfo, arguments, stopped);
+				if (stopped)
+				{
+					return success;
+				}
+			}
+
+			///////////////////////////////////////////////////////////
+			// Initialize
+			///////////////////////////////////////////////////////////
+
+			Ptr<TableLockInfo> tableLockInfo;
+			Ptr<PageLockInfo> pageLockInfo;
+			Ptr<RowLockInfo> rowLockInfo;
+			BufferPage targetPage;
+			vuint64_t targetOffset = ~(vuint64_t)0;
+			vint index = -1;
 
 			///////////////////////////////////////////////////////////
 			// Find TableLock
@@ -304,15 +319,13 @@ LockManager (Acquire)
 			LockResult& result = arguments.f1;
 			bool addPendingLock = arguments.f2;
 
-			if (AcquireObjectLockUnsafe(lockInfo, owner, target))
+			if (result.blocked = !AcquireObjectLockUnsafe(lockInfo, owner, target))
 			{
-				result.blocked = false;
-				return true;
+				return !addPendingLock || AddPendingLockUnsafe(owner, target);
 			}
 			else
 			{
-				result.blocked = true;
-				return !addPendingLock || AddPendingLockUnsafe(owner, target);
+				return true;
 			}
 		}
 
@@ -335,25 +348,20 @@ LockManager (Acquire)
 LockManager (Release)
 ***********************************************************************/
 
+		bool LockManager::ReleasePreLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, bool& stopped)
+		{
+			stopped = RemovePendingLockUnsafe(owner, arguments);
+			return true;
+		}
+
 		bool LockManager::ReleaseTableLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo)
 		{
-			const LockTarget& target = arguments;
-
-			if (ReleaseObjectLockUnsafe(tableLockInfo, owner, target))
-			{
-				return true;
-			}
-			else
-			{
-				return RemovePendingLockUnsafe(owner, target);
-			}
+			return ReleaseObjectLockUnsafe(tableLockInfo, owner, arguments);
 		}
 
 		bool LockManager::ReleasePageLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo)
 		{
-			const LockTarget& target = arguments;
-
-			if (ReleaseObjectLockUnsafe(pageLockInfo, owner, target))
+			if (ReleaseObjectLockUnsafe(pageLockInfo, owner, arguments))
 			{
 				if (pageLockInfo->IsEmpty())
 				{
@@ -363,16 +371,13 @@ LockManager (Release)
 			}
 			else
 			{
-				return RemovePendingLockUnsafe(owner, target);
+				return false;
 			}
 		}
 
 		bool LockManager::ReleaseRowLock(Ptr<TransInfo> owner, ReleaseLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo)
 		{
-			const LockTarget& target = arguments;
-
-			bool success = true;
-			if (ReleaseObjectLockUnsafe(rowLockInfo, owner, target))
+			if (ReleaseObjectLockUnsafe(rowLockInfo, owner, arguments))
 			{
 				if (rowLockInfo->IsEmpty())
 				{
@@ -386,7 +391,7 @@ LockManager (Release)
 			}
 			else
 			{
-				return RemovePendingLockUnsafe(owner, target);
+				return false;
 			}
 		}
 
@@ -439,6 +444,7 @@ LockManager (UnsafeLockOperation)
 			return OperateObjectLock<AcquireLockArgs>(
 				owner,
 				arguments,
+				nullptr,
 				&LockManager::AcquireTableLock,
 				&LockManager::AcquirePageLock,
 				&LockManager::AcquireRowLock,
@@ -454,6 +460,7 @@ LockManager (UnsafeLockOperation)
 			return OperateObjectLock<ReleaseLockArgs>(
 				owner,
 				arguments,
+				&LockManager::ReleasePreLock,
 				&LockManager::ReleaseTableLock,
 				&LockManager::ReleasePageLock,
 				&LockManager::ReleaseRowLock,
@@ -468,6 +475,7 @@ LockManager (UnsafeLockOperation)
 			return OperateObjectLock<UpgradeLockArgs>(
 				owner,
 				arguments,
+				nullptr,
 				&LockManager::UpgradeTableLock,
 				&LockManager::UpgradePageLock,
 				&LockManager::UpgradeRowLock,
