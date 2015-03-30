@@ -281,7 +281,7 @@ LockManager (ObjectLock)
 			bool					RemovePendingLockUnsafe(Ptr<TransInfo> owner, const LockTarget& target);
 
 /***********************************************************************
-LockManager (Template )
+LockManager (Template)
 ***********************************************************************/
 
 		protected:
@@ -332,6 +332,15 @@ LockManager (Upgrade)
 			bool					UpgradeTableLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo);
 			bool					UpgradePageLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo);
 			bool					UpgradeRowLock(Ptr<TransInfo> owner, UpgradeLockArgs arguments, Ptr<TableLockInfo> tableLockInfo, Ptr<PageLockInfo> pageLockInfo, Ptr<RowLockInfo> rowLockInfo);
+
+/***********************************************************************
+LockManager (UnsafeLockOperation)
+***********************************************************************/
+
+		protected:
+			bool					AcquireLockUnsafe(BufferTransaction owner, const LockTarget& target, LockResult& result, bool processPendingLock);
+			bool					ReleaseLockUnsafe(BufferTransaction owner, const LockTarget& target);
+			bool					UpgradeLockUnsafe(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result);
 
 /***********************************************************************
 LockManager (Interface)

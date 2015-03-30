@@ -430,6 +430,53 @@ LockManager (Upgrade)
 		}
 
 /***********************************************************************
+LockManager (UnsafeLockOperation)
+***********************************************************************/
+
+		bool LockManager::AcquireLockUnsafe(BufferTransaction owner, const LockTarget& target, LockResult& result, bool processPendingLock)
+		{
+			AcquireLockArgs arguments(target, result, processPendingLock);
+			return OperateObjectLock<AcquireLockArgs>(
+				owner,
+				arguments,
+				&LockManager::AcquireTableLock,
+				&LockManager::AcquirePageLock,
+				&LockManager::AcquireRowLock,
+				true,
+				processPendingLock
+				);
+		}
+
+		bool LockManager::ReleaseLockUnsafe(BufferTransaction owner, const LockTarget& target)
+		{
+			ReleaseLockArgs arguments = target;
+			LockResult result;
+			return OperateObjectLock<ReleaseLockArgs>(
+				owner,
+				arguments,
+				&LockManager::ReleaseTableLock,
+				&LockManager::ReleasePageLock,
+				&LockManager::ReleaseRowLock,
+				false,
+				false
+				);
+		}
+
+		bool LockManager::UpgradeLockUnsafe(BufferTransaction owner, const LockTarget& oldTarget, LockTargetAccess newAccess, LockResult& result)
+		{
+			UpgradeLockArgs arguments(oldTarget, newAccess, result);
+			return OperateObjectLock<UpgradeLockArgs>(
+				owner,
+				arguments,
+				&LockManager::UpgradeTableLock,
+				&LockManager::UpgradePageLock,
+				&LockManager::UpgradeRowLock,
+				false,
+				true
+				);
+		}
+
+/***********************************************************************
 LockManager (ctor/dtor)
 ***********************************************************************/
 
@@ -525,7 +572,7 @@ LockManager (Registration)
 		}
 
 /***********************************************************************
-LockManager (Lock Operation)
+LockManager (LockOperation)
 ***********************************************************************/
 
 		bool LockManager::AcquireLock(BufferTransaction owner, const LockTarget& target, LockResult& result)
@@ -533,16 +580,7 @@ LockManager (Lock Operation)
 			bool success = false;
 			SPIN_LOCK(lock)
 			{
-				AcquireLockArgs arguments(target, result, true);
-				success = OperateObjectLock<AcquireLockArgs>(
-					owner,
-					arguments,
-					&LockManager::AcquireTableLock,
-					&LockManager::AcquirePageLock,
-					&LockManager::AcquireRowLock,
-					true,
-					true
-					);
+				success = AcquireLockUnsafe(owner, target, result, true);
 			}
 			return success;
 		}
@@ -552,17 +590,7 @@ LockManager (Lock Operation)
 			bool success = false;
 			SPIN_LOCK(lock)
 			{
-				ReleaseLockArgs arguments = target;
-				LockResult result;
-				success = OperateObjectLock<ReleaseLockArgs>(
-					owner,
-					arguments,
-					&LockManager::ReleaseTableLock,
-					&LockManager::ReleasePageLock,
-					&LockManager::ReleaseRowLock,
-					false,
-					false
-					);
+				success = ReleaseLockUnsafe(owner, target);
 			}
 			return success;
 		}
@@ -572,16 +600,7 @@ LockManager (Lock Operation)
 			bool success = false;
 			SPIN_LOCK(lock)
 			{
-				UpgradeLockArgs arguments(oldTarget, newAccess, result);
-				success = OperateObjectLock<UpgradeLockArgs>(
-					owner,
-					arguments,
-					&LockManager::UpgradeTableLock,
-					&LockManager::UpgradePageLock,
-					&LockManager::UpgradeRowLock,
-					false,
-					true
-					);
+				success = UpgradeLockUnsafe(owner, oldTarget, newAccess, result);
 			}
 			return success;
 		}
@@ -627,16 +646,7 @@ LockManager (Scheduler)
 						auto transInfo = transactions[trans];
 						CHECK_ERROR(transInfo->pendingLock.IsValid(), L"vl::database::LockManager::PickTransaction(LockResult&)#Internal error: Field pendings is corrupted.");
 
-						AcquireLockArgs arguments(transInfo->pendingLock, result, false);
-						bool success = OperateObjectLock<AcquireLockArgs>(
-							transInfo->trans,
-							arguments,
-							&LockManager::AcquireTableLock,
-							&LockManager::AcquirePageLock,
-							&LockManager::AcquireRowLock,
-							true,
-							false
-							);
+						bool success = AcquireLockUnsafe(transInfo->trans, transInfo->pendingLock, result, false);
 						CHECK_ERROR(success, L"vl::database::LockManager::PickTransaction(LockResult&)#Internal error: Wrong arguments provided to acquire lock.");
 
 						if (!result.blocked)
@@ -664,19 +674,28 @@ LockManager (Deadlock)
 		class DeadlockDetection
 		{
 		public:
+			struct Node;
+			struct Edge;
+
+			struct Edge
+			{
+				Node*								fromNode;
+				Node*								toNode;
+				SortedList<vint>					toNodeAcquired;
+			};
+
 			struct Node
 			{
 				Ptr<LockManager::TransInfo>			transInfo;
-				SortedList<vint>					acquired;
-				SortedList<Node*>					ins;
-				SortedList<Node*>					outs;
+				SortedList<Edge*>					ins;
+				SortedList<Edge*>					outs;
 
 				Node*								previous = nullptr;
 				vint								next = -1;
 				bool								touched = false;
 			};
 
-			static void BuildGraph(LockManager* lm, List<Node*>& nodes)
+			static void BuildGraph(LockManager* lm, List<Node*>& nodes, Group<Node*, Edge*>& edges)
 			{
 				FOREACH(Ptr<LockManager::PendingInfo>, pendingInfo, lm->pendings.Values())
 				{
@@ -695,29 +714,48 @@ LockManager (Deadlock)
 					CHECK_ERROR(pending.IsValid(), L"vl::database::DeadlockDetection::BuildGraph(LockManager*, List<DeadlockDetection::Node*>&)#Internal error: Field pendings is corrupted.");
 					FOREACH(Node*, to, nodes)
 					{
+						Edge* edge = nullptr;
 						for (vint i = 0; i < to->transInfo->acquiredLocks.Count(); i++)
 						{
 							const auto& acquired = to->transInfo->acquiredLocks[i];
 							pending.access = acquired.access;
 							if (pending == acquired && !lockCompatibility[(vint)access][(vint)acquired.access])
 							{
-								if (!to->acquired.Contains(i))
+								if (!edge)
 								{
-									to->acquired.Add(i);
+									edge = new Edge;
+									edge->fromNode = from;
+									edge->toNode = to;
 								}
-								from->outs.Add(to);
-								to->ins.Add(from);
+								if (!edge->toNodeAcquired.Contains(i))
+								{
+									edge->toNodeAcquired.Add(i);
+								}
 							}
+						}
+
+						if (edge)
+						{
+							from->outs.Add(edge);
+							to->ins.Add(edge);
+							edges.Add(to, edge);
 						}
 					}
 				}
 			}
 
-			static void DeleteGraph(List<Node*>& nodes)
+			static void DeleteGraph(List<Node*>& nodes, Group<Node*, Edge*>& edges)
 			{
 				FOREACH(Node*, node, nodes)
 				{
 					delete node;
+				}
+				for (vint i = 0; i < edges.Count(); i++)
+				{
+					FOREACH(Edge*, edge, edges.GetByIndex(i))
+					{
+						delete edge;
+					}
 				}
 			}
 
@@ -760,15 +798,15 @@ LockManager (Deadlock)
 							ReduceNode(nodes, node, index);
 							affected.RemoveAt(affected.Count() - 1);
 
-							FOREACH(Node*, in, node->ins)
+							FOREACH(Edge*, in, node->ins)
 							{
-								in->outs.Remove(node);
-								TestReducableNode(affected, in);
+								in->fromNode->outs.Remove(in);
+								TestReducableNode(affected, in->fromNode);
 							}
-							FOREACH(Node*, out, node->outs)
+							FOREACH(Edge*, out, node->outs)
 							{
-								out->ins.Remove(node);
-								TestReducableNode(affected, out);
+								out->toNode->ins.Remove(out);
+								TestReducableNode(affected, out->toNode);
 							}
 						}
 						affected.Clear();
@@ -796,7 +834,7 @@ LockManager (Deadlock)
 					current->touched = true;
 					if (++current->next < current->outs.Count())
 					{
-						auto next = current->outs[current->next];
+						auto next = current->outs[current->next]->toNode;
 						if (next->next != -1)
 						{
 							next->previous = current;
@@ -832,13 +870,13 @@ LockManager (Deadlock)
 
 			static Node* ChooseVictim(SortedList<Node*>& nodes, Node* cycle)
 			{
-				FOREACH(Node*, in, cycle->ins)
+				FOREACH(Edge*, in, cycle->ins)
 				{
-					in->outs.Remove(cycle);
+					in->fromNode->outs.Remove(in);
 				}
-				FOREACH(Node*, out, cycle->outs)
+				FOREACH(Edge*, out, cycle->outs)
 				{
-					out->ins.Remove(cycle);
+					out->toNode->ins.Remove(out);
 				}
 				nodes.Remove(cycle);
 				return cycle;
@@ -847,8 +885,9 @@ LockManager (Deadlock)
 			static void DetectDeadlock(LockManager* lm, DeadlockInfo& info)
 			{
 				List<Node*> allNodes;
+				Group<Node*, Edge*> allEdges;
 				SortedList<Node*> nodes, involved;
-				BuildGraph(lm, allNodes);
+				BuildGraph(lm, allNodes, allEdges);
 				CopyFrom(nodes, allNodes);
 
 				while (true)
@@ -871,12 +910,27 @@ LockManager (Deadlock)
 				FOREACH(Node*, node, involved)
 				{
 					info.pending.Add(node->transInfo->trans, node->transInfo->pendingLock);
-					FOREACH(vint, acquired, node->acquired)
+					SortedList<vint> acquiredLocks;
+					FOREACH(Edge*, in, allEdges[node])
+					{
+						if (involved.Contains(in->fromNode))
+						{
+							FOREACH(vint, acquired, in->toNodeAcquired)
+							{
+								if (!acquiredLocks.Contains(acquired))
+								{
+									acquiredLocks.Add(acquired);
+								}
+							}
+						}
+					}
+
+					FOREACH(vint, acquired, acquiredLocks)
 					{
 						info.acquired.Add(node->transInfo->trans, node->transInfo->acquiredLocks[acquired]);
 					}
 				}
-				DeleteGraph(allNodes);
+				DeleteGraph(allNodes, allEdges);
 			}
 		};
 
@@ -904,30 +958,14 @@ LockManager (Deadlock)
 					return false;
 				}
 
-				bool success = OperateObjectLock<ReleaseLockArgs>(
-					trans,
-					transInfo->pendingLock,
-					&LockManager::ReleaseTableLock,
-					&LockManager::ReleasePageLock,
-					&LockManager::ReleaseRowLock,
-					false,
-					false
-					);
+				bool success = ReleaseLockUnsafe(trans, transInfo->pendingLock);
 				if (!success)
 				{
 					CHECK_ERROR(false, L"vl::database::LockManager::Rollback(BufferTransaction)#Internal error: Failed to rollback a transaction.");
 				}
 				for (vint i = transInfo->acquiredLocks.Count() - 1; i >= 0; i--)
 				{
-					success = OperateObjectLock<ReleaseLockArgs>(
-						trans,
-						transInfo->acquiredLocks[i],
-						&LockManager::ReleaseTableLock,
-						&LockManager::ReleasePageLock,
-						&LockManager::ReleaseRowLock,
-						false,
-						false
-						);
+					success = ReleaseLockUnsafe(trans, transInfo->acquiredLocks[i]);
 					if (!success)
 					{
 						CHECK_ERROR(false, L"vl::database::LockManager::Rollback(BufferTransaction)#Internal error: Failed to rollback a transaction.");
