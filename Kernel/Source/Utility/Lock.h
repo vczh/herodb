@@ -84,9 +84,6 @@ LockManager (Data Structure)
 
 			static vint64_t Compare(const LockTarget& a, const LockTarget& b)
 			{
-				static_assert(sizeof(a.page) == sizeof(a.page), "LockTarget::page/address should be in an union.");
-				static_assert((vint)&((LockTarget*)nullptr)->page == (vint)&((LockTarget*)nullptr)->address, "LockTarget::page/address should be in an union.");
-
 				vuint64_t compare = 0;
 				compare = (vint64_t)a.type - (vint64_t)b.type;
 				if (compare != 0) return compare;
@@ -94,11 +91,15 @@ LockManager (Data Structure)
 				if (compare != 0) return compare;
 				compare = (vint64_t)a.table.index - (vint64_t)b.table.index;
 				if (compare != 0) return compare;
-				if (a.type != LockTargetType::Table)
+				switch (a.type)
 				{
-					compare = (vint64_t)a.page.index - (vint64_t)b.page.index;
+				case LockTargetType::Page:
+					return (vint64_t)a.page.index - (vint64_t)b.page.index;
+				case LockTargetType::Row:
+					return (vint64_t)a.address.index - (vint64_t)b.address.index;
+				default:
+					return 0;
 				}
-				return compare;
 			}
 
 			bool operator==(const LockTarget& b)const { return Compare(*this, b) == 0; }

@@ -319,7 +319,7 @@ LockManager (Acquire)
 			LockResult& result = arguments.f1;
 			bool addPendingLock = arguments.f2;
 
-			if (result.blocked = !AcquireObjectLockUnsafe(lockInfo, owner, target))
+			if ((result.blocked = !AcquireObjectLockUnsafe(lockInfo, owner, target)))
 			{
 				return !addPendingLock || AddPendingLockUnsafe(owner, target);
 			}
