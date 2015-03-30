@@ -382,7 +382,7 @@ TEST_CASE(Utility_Lock_SimpleDeadlock)
 	LockTarget ltAX = {XLOCK, tableA};
 	LockTarget ltBS = {SLOCK, tableB};
 	LockTarget ltBX = {XLOCK, tableB};
-
+	
 	// Deadlock
 	
 	TEST_ASSERT(lm.AcquireLock(transA, ltAS, lr) == true);
@@ -413,6 +413,7 @@ TEST_CASE(Utility_Lock_SimpleDeadlock)
 	TEST_ASSERT(info.rollbacks[0] == transA || info.rollbacks[0] == transB);
 
 	// Rollback
+
 	auto rollback = info.rollbacks[0];
 	TEST_ASSERT(lm.Rollback(rollback) == true);
 	TEST_ASSERT(lm.ReleaseLock(transA, ltAS) == (transA != rollback));
@@ -421,4 +422,74 @@ TEST_CASE(Utility_Lock_SimpleDeadlock)
 	TEST_ASSERT(lm.ReleaseLock(transB, ltAX) == (transB != rollback));
 	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
 	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
+}
+
+TEST_CASE(Utility_Lock_MinimizedDeadlockInfo)
+{
+	INIT_LOCK_MANAGER;
+
+	LockTarget ltAS = {SLOCK, tableA};
+	LockTarget ltAX = {XLOCK, tableA};
+	LockTarget ltBS = {SLOCK, tableB};
+	LockTarget ltBX = {XLOCK, tableB};
+
+	LockTarget ltCS = {SLOCK, tableA, pageA};
+	LockTarget ltCX = {XLOCK, tableA, pageA};
+	LockTarget ltDS = {SLOCK, tableB, pageB};
+	LockTarget ltDX = {XLOCK, tableB, pageB};
+
+	// Deadlock
+	
+	TEST_ASSERT(lm.AcquireLock(transA, ltAS, lr) == true);
+	TEST_ASSERT(lr.blocked == false);
+	TEST_ASSERT(lm.AcquireLock(transB, ltBS, lr) == true);
+	TEST_ASSERT(lr.blocked == false);
+	TEST_ASSERT(lm.AcquireLock(transA, ltCS, lr) == true);
+	TEST_ASSERT(lr.blocked == false);
+	TEST_ASSERT(lm.AcquireLock(transB, ltDS, lr) == true);
+	TEST_ASSERT(lr.blocked == false);
+
+	TEST_ASSERT(lm.AcquireLock(transA, ltBX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.AcquireLock(transB, ltAX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.AcquireLock(transC, ltCX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+	TEST_ASSERT(lm.AcquireLock(transD, ltDX, lr) == true);
+	TEST_ASSERT(lr.blocked == true);
+
+	TEST_ASSERT(lm.PickTransaction(lr) == BufferTransaction::Invalid());
+
+	DeadlockInfo info;
+	lm.DetectDeadlock(info);
+	TEST_ASSERT(info.acquired.Count() == 2);
+	TEST_ASSERT(info.acquired.Keys()[0] == transA);
+	TEST_ASSERT(info.acquired.GetByIndex(0).Count() == 1);
+	TEST_ASSERT(info.acquired.GetByIndex(0)[0] == ltAS);
+	TEST_ASSERT(info.acquired.Keys()[1] == transB);
+	TEST_ASSERT(info.acquired.GetByIndex(1).Count() == 1);
+	TEST_ASSERT(info.acquired.GetByIndex(1)[0] == ltBS);
+	TEST_ASSERT(info.pending.Count() == 2);
+	TEST_ASSERT(info.pending.Keys()[0] == transA);
+	TEST_ASSERT(info.pending.Values()[0] == ltBX);
+	TEST_ASSERT(info.pending.Keys()[1] == transB);
+	TEST_ASSERT(info.pending.Values()[1] == ltAX);
+	TEST_ASSERT(info.rollbacks.Count() == 1);
+	TEST_ASSERT(info.rollbacks[0] == transA || info.rollbacks[0] == transB);
+
+	// Rollback
+	
+	auto rollback = info.rollbacks[0];
+	TEST_ASSERT(lm.Rollback(rollback) == true);
+	TEST_ASSERT(lm.ReleaseLock(transA, ltAS) == (transA != rollback));
+	TEST_ASSERT(lm.ReleaseLock(transA, ltBX) == (transA != rollback));
+	TEST_ASSERT(lm.ReleaseLock(transA, ltCS) == (transA != rollback));
+	TEST_ASSERT(lm.ReleaseLock(transB, ltBS) == (transB != rollback));
+	TEST_ASSERT(lm.ReleaseLock(transB, ltAX) == (transB != rollback));
+	TEST_ASSERT(lm.ReleaseLock(transB, ltDS) == (transB != rollback));
+	TEST_ASSERT(lm.ReleaseLock(transC, ltCX) == true);
+	TEST_ASSERT(lm.ReleaseLock(transD, ltDX) == true);
+	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
+	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
+	
 }
