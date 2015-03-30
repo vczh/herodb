@@ -491,5 +491,4 @@ TEST_CASE(Utility_Lock_MinimizedDeadlockInfo)
 	TEST_ASSERT(lm.ReleaseLock(transD, ltDX) == true);
 	TEST_ASSERT(lm.TableHasLocks(tableA) == false);
 	TEST_ASSERT(lm.TableHasLocks(tableB) == false);
-	
 }

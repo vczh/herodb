@@ -445,11 +445,12 @@ LogManager
 
 		bool LogManager::IsActive(BufferTransaction transaction)
 		{
+			bool success = false;
 			SPIN_LOCK(lock)
 			{
-				return activeTransactions.Keys().Contains(transaction);
+				success = activeTransactions.Keys().Contains(transaction);
 			}
-			CHECK_ERROR(false, L"vl::database::LogManager::IsActive(BufferTransaction)#Internal error: Should not reach here.");
+			return success;
 		}
 
 		Ptr<ILogWriter> LogManager::OpenLogItem(BufferTransaction transaction)
@@ -457,15 +458,17 @@ LogManager
 			SPIN_LOCK(lock)
 			{
 				auto index = activeTransactions.Keys().IndexOf(transaction);
-				if (index == -1) return nullptr;
-
-				auto desc = activeTransactions.Values()[index];
-				if (desc->writer) return nullptr;
-
-				desc->writer = new LogWriter(this, transaction);
-				return desc->writer;
+				if (index != -1)
+				{
+					auto desc = activeTransactions.Values()[index];
+					if (!desc->writer)
+					{
+						desc->writer = new LogWriter(this, transaction);
+						return desc->writer;
+					}
+				}
 			}
-			CHECK_ERROR(false, L"vl::database::LogManager::OpenLogItem(BufferTransaction)#Internal error: Should not reach here.");
+			return nullptr;
 		}
 
 		Ptr<ILogReader> LogManager::EnumLogItem(BufferTransaction transaction)

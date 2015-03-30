@@ -48,7 +48,9 @@ TEST_CASE(Utility_Log_TransactionWithOneEmptyItem)
 
 	auto writer = log.OpenLogItem(trans);
 	TEST_ASSERT(writer);
+	TEST_ASSERT(writer->IsOpening() == true);
 	TEST_ASSERT(writer->Close() == true);
+	TEST_ASSERT(writer->IsOpening() == false);
 	TEST_ASSERT(writer->Close() == false);
 
 	{
@@ -200,9 +202,14 @@ TEST_CASE(Utility_Log_OpenTransactionsSequencial)
 	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
 	LogManager log(&bm, source, true);
 
+	TEST_ASSERT(log.GetUsedTransactionCount() == 0);
+	TEST_ASSERT(log.GetTransaction(0) == BufferTransaction::Invalid());
 	for (vint i = 0; i < 20; i++)
 	{
-		transes.Add(log.OpenTransaction());
+		auto trans = log.OpenTransaction();
+		TEST_ASSERT(log.GetUsedTransactionCount() == i + 1);
+		TEST_ASSERT(log.GetTransaction(i) == trans);
+		transes.Add(trans);
 		names.Add(L"Transaction<" + itow(i + 1) + L">");
 	}
 
@@ -421,6 +428,5 @@ TEST_CASE(Utility_Log_ManyTransactions)
 		TEST_ASSERT(reader->GetStream().Size() == size);
 		TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
 		TEST_ASSERT(message == buffer);
-
 	}
 }
