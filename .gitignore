@@ -13,4 +13,5 @@
 *.gcda
 **/Obj/**
 **/Bin/**
+**/Coverage/**
 *~
