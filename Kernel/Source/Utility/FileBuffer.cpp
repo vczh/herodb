@@ -76,10 +76,7 @@ FileMapping
 					CHECK_ERROR(fstat(fileDescriptor, &fileState) != -1, L"vl::database::buffer_internal::FileMapping::InitializeExistingSource()#Internal error: Failed to call fstat.");
 					if (fileState.st_size < offset + pageSize)
 					{
-						if (fileState.st_size != offset)
-						{
-							return nullptr;
-						}
+						CHECK_ERROR(fileState.st_size == offset, L"vl::database::buffer_internal::FileMapping::InitializeExistingSource()#Internal error: The file is corrupted.");
 						ftruncate(fileDescriptor, offset + pageSize);
 						totalPageCount = offset / pageSize + 1;
 					}
@@ -108,41 +105,36 @@ FileMapping
 
 			BufferPage FileMapping::AppendPage()
 			{
+				BufferPage result;
 				BufferPage page{totalPageCount};
 				if (MapPage(page))
 				{
-					return page;
+					result = page;
 				}
-				else
-				{
-					return BufferPage::Invalid();
-				}
+				return result;
 			}
 
 			bool FileMapping::UnmapPage(BufferPage page)
 			{
 				vint index = mappedPages.Keys().IndexOf(page.index);
-				if (index == -1)
+				if (index != -1)
 				{
-					return false;
-				}
+					auto pageDesc = mappedPages.Values()[index];
+					if (!pageDesc->locked)
+					{
+						if (pageDesc->dirty)
+						{
+							CHECK_ERROR(msync(pageDesc->address, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileMapping::UnmapPage(BufferPage)#Internal error: Failed to call msync.");
+							pageDesc->dirty = false;
+						}
+						CHECK_ERROR(munmap(pageDesc->address, pageSize) != -1, L"vl::database::buffer_internal::FileMapping::UnmapPage(BufferPage)#Internal error: Failed to call munmap.");
 
-				auto pageDesc = mappedPages.Values()[index];
-				if (pageDesc->locked)
-				{
-					return false;
+						mappedPages.Remove(page.index);
+						DECRC(totalUsedPages);
+						return true;
+					}
 				}
-
-				if (pageDesc->dirty)
-				{
-					CHECK_ERROR(msync(pageDesc->address, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileMapping::UnmapPage(BufferPage)#Internal error: Failed to call msync.");
-					pageDesc->dirty = false;
-				}
-				CHECK_ERROR(munmap(pageDesc->address, pageSize) != -1, L"vl::database::buffer_internal::FileMapping::UnmapPage(BufferPage)#Internal error: Failed to call munmap.");
-
-				mappedPages.Remove(page.index);
-				DECRC(totalUsedPages);
-				return true;
+				return false;
 			}
 
 			void FileMapping::UnmapAllPages()

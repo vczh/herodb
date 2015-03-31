@@ -14,11 +14,14 @@ InMemoryBufferSource
 
 		Ptr<BufferPageDesc> InMemoryBufferSource::MapPage(BufferPage page)
 		{
-			if (page.index > pages.Count())
+			CHECK_ERROR(page.index <= pages.Count(), L"vl::database::InMemoryBufferSource::MapPage(BufferPage)#Internal error: Index of page to map is out of range.");
+			if (page.index < pages.Count() && pages[page.index])
 			{
-				return nullptr;
+				auto pageDesc = pages[page.index];
+				pageDesc->lastAccessTime = (vuint64_t)time(nullptr);
+				return pageDesc;
 			}
-			else if (page.index == pages.Count() || !pages[page.index])
+			else
 			{
 				auto address = malloc(pageSize);
 				if (!address) return nullptr;
@@ -37,12 +40,6 @@ InMemoryBufferSource
 					pages[page.index] = pageDesc;
 				}
 				INCRC(totalUsedPages);
-				return pageDesc;
-			}
-			else
-			{
-				auto pageDesc = pages[page.index];
-				pageDesc->lastAccessTime = (vuint64_t)time(nullptr);
 				return pageDesc;
 			}
 		}
