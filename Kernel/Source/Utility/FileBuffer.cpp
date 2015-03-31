@@ -1,4 +1,4 @@
-#include "Buffer.h"
+#include "FileBuffer.h"
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -38,505 +38,480 @@ namespace vl
 FileBufferSource
 ***********************************************************************/
 
-		class FileBufferSource : public Object, public IBufferSource
+		Ptr<BufferPageDesc> FileBufferSource::MapPage(BufferPage page)
 		{
-			typedef collections::Dictionary<vuint64_t, Ptr<BufferPageDesc>>		PageMap;
-			typedef collections::List<vuint64_t>								PageList;
-		private:
-			BufferSource			source;
-			volatile vuint64_t*		totalUsedPages;
-			vuint64_t				pageSize;
-			SpinLock				lock;
-			WString					fileName;
-			int						fileDescriptor;
-
-			PageMap					mappedPages;
-			PageList				initialPages;
-			PageList				useMaskPages;
-			vint					activeInitialPageIndex;
-			vuint64_t				totalPageCount;
-
-			vuint64_t				initialPageItemCount;
-			vuint64_t				useMaskPageItemCount;
-			BufferPage				indexPage;
-
-		public:
-
-			FileBufferSource(BufferSource _source, volatile vuint64_t* _totalUsedPages, vuint64_t _pageSize, const WString& _fileName, int _fileDescriptor)
-				:source(_source)
-				,totalUsedPages(_totalUsedPages)
-				,pageSize(_pageSize)
-				,fileName(_fileName)
-				,fileDescriptor(_fileDescriptor)
-				,initialPageItemCount((_pageSize - INDEX_INITIAL_FREEPAGEITEMBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t))
-				,useMaskPageItemCount((_pageSize - INDEX_USEMASK_USEMASKBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t))
-				,activeInitialPageIndex(-1)
-				,totalPageCount(0)
+			vint index = mappedPages.Keys().IndexOf(page.index);
+			if (index == -1)
 			{
-				indexPage.index = INDEX_PAGE_INDEX;
-			}
-
-			void Unload()override
-			{
-				FOREACH(Ptr<BufferPageDesc>, pageDesc, mappedPages.Values())
-				{
-					DECRC(totalUsedPages);
-					munmap(pageDesc->address, pageSize);
-				}
-				close(fileDescriptor);
-			}
-
-			BufferSource GetBufferSource()override
-			{
-				return source;
-			}
-
-			SpinLock& GetLock()override
-			{
-				return lock;
-			}
-
-			WString GetFileName()override
-			{
-				return fileName;
-			}
-
-			Ptr<BufferPageDesc> MapPage(BufferPage page)
-			{
-				vint index = mappedPages.Keys().IndexOf(page.index);
-				if (index == -1)
-				{
-					vuint64_t offset = page.index * pageSize;
-					struct stat fileState;	
-					if (fstat(fileDescriptor, &fileState) == -1)
-					{
-						return nullptr;
-					}
-					if (fileState.st_size < offset + pageSize)
-					{
-						if (fileState.st_size != offset)
-						{
-							return nullptr;
-						}
-						ftruncate(fileDescriptor, offset + pageSize);
-						totalPageCount = offset / pageSize + 1;
-					}
-
-					void* address = mmap(nullptr, pageSize, PROT_READ | PROT_WRITE, MAP_SHARED, fileDescriptor, offset);
-					if (address == MAP_FAILED)
-					{
-						return nullptr;
-					}
-					
-					auto pageDesc = MakePtr<BufferPageDesc>();
-					pageDesc->address = address;
-					pageDesc->offset = offset;
-					pageDesc->lastAccessTime = (vuint64_t)time(nullptr);
-					mappedPages.Add(page.index, pageDesc);
-					INCRC(totalUsedPages);
-					return pageDesc;
-				}
-				else
-				{
-					auto pageDesc = mappedPages.Values()[index];
-					pageDesc->lastAccessTime = (vuint64_t)time(nullptr);
-					return pageDesc;
-				}
-			}
-
-			bool UnmapPage(BufferPage page)override
-			{
-				vint index = mappedPages.Keys().IndexOf(page.index);
-				if (index == -1)
-				{
-					return false;
-				}
-
-				auto pageDesc = mappedPages.Values()[index];
-				if (pageDesc->locked)
-				{
-					return false;
-				}
-
-				if (pageDesc->dirty)
-				{
-					msync(pageDesc->address, pageSize, MS_SYNC);
-					pageDesc->dirty = false;
-				}
-				munmap(pageDesc->address, pageSize);
-
-				mappedPages.Remove(page.index);
-				DECRC(totalUsedPages);
-				return true;
-			}
-			
-			void PushFreePage(BufferPage page)
-			{
-				BufferPage initialPage{initialPages[activeInitialPageIndex]};
-				auto pageDesc = MapPage(initialPage);
-				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to map the last active initial page.");
-				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-				vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
-				if (count == initialPageItemCount)
-				{
-					if (activeInitialPageIndex == initialPages.Count() - 1)
-					{
-						BufferPage newInitialPage{totalPageCount};
-						numbers[INDEX_INITIAL_NEXTINITIALPAGE] = newInitialPage.index;
-						msync(numbers, pageSize, MS_SYNC);
-
-						auto newPageDesc = MapPage(newInitialPage);
-						CHECK_ERROR(newPageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to create a new initial page.");
-						numbers = (vuint64_t*)newPageDesc->address;
-						memset(numbers, 0, pageSize);
-						numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
-						numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
-						numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
-						msync(numbers, pageSize, MS_SYNC);
-						initialPages.Add(newInitialPage.index);
-						SetUseMask(newInitialPage, true);
-					}
-					else
-					{
-						BufferPage newInitialPage{initialPages[activeInitialPageIndex + 1]};
-						auto newPageDesc = MapPage(newInitialPage);
-						CHECK_ERROR(newPageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to reuse a created initial page.");
-						numbers = (vuint64_t*)newPageDesc->address;
-						numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
-						numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
-						msync(numbers, pageSize, MS_SYNC);
-					}
-					activeInitialPageIndex++;
-				}
-				else
-				{
-					numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN + count] = page.index;
-					count++;
-					msync(numbers, pageSize, MS_SYNC);
-				}
-			}
-
-			BufferPage PopFreePage()
-			{
-				BufferPage page = BufferPage::Invalid();
-				BufferPage initialPage{initialPages[activeInitialPageIndex]};
-				auto pageDesc = MapPage(initialPage);
-				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::PopFreePage()#Internal error: Failed to map the last active initial page.");
-				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-				vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
-
-				if (count == 0 && initialPage.index == INDEX_PAGE_INITIAL)
-				{
-					return page;
-				}
-				count--;
-				page.index = numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN + count];
-				msync(numbers, pageSize, MS_SYNC);
-
-				if (count == 0)
-				{
-					activeInitialPageIndex--;
-				}
-				return page;
-			}
-
-			bool GetUseMask(BufferPage page)
-			{
-				auto useMaskPageBits = 8 * sizeof(vuint64_t);
-				auto useMaskPageIndex = page.index / (useMaskPageBits * useMaskPageItemCount);
-				auto useMaskPageBitIndex = page.index % (useMaskPageBits * useMaskPageItemCount);
-				auto useMaskPageItem = INDEX_USEMASK_USEMASKBEGIN + useMaskPageBitIndex / useMaskPageBits;
-				auto useMaskPageShift = useMaskPageBitIndex % useMaskPageBits;
-
-				BufferPage useMaskPage{useMaskPages[useMaskPageIndex]};
-				auto pageDesc = MapPage(useMaskPage);
-				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::GetUseMask(BufferPage)#Internal error: Failed to map the specified use mask page.");
-				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-				auto& item = numbers[useMaskPageItem];
-				bool result = ((item >> useMaskPageShift) & ((vuint64_t)1)) == 1;
-				msync(numbers, pageSize, MS_SYNC);
-				return result;
-			}
-			
-			void SetUseMask(BufferPage page, bool available)
-			{
-				auto useMaskPageBits = 8 * sizeof(vuint64_t);
-				auto useMaskPageIndex = page.index / (useMaskPageBits * useMaskPageItemCount);
-				auto useMaskPageBitIndex = page.index % (useMaskPageBits * useMaskPageItemCount);
-				auto useMaskPageItem = INDEX_USEMASK_USEMASKBEGIN + useMaskPageBitIndex / useMaskPageBits;
-				auto useMaskPageShift = useMaskPageBitIndex % useMaskPageBits;
-				bool newPage = false;
-
-				BufferPage useMaskPage = BufferPage::Invalid();
-
-				if (useMaskPageIndex == useMaskPages.Count())
-				{
-					newPage = true;
-					BufferPage lastPage{useMaskPages[useMaskPageIndex - 1]};
-					useMaskPage = AppendPage();
-					CHECK_ERROR(useMaskPage.IsValid(), L"vl::database::FileBufferSOurce::SetUseMask(BufferPage, bool)#Internal error: Failed to create a new use mask page.");
-					useMaskPages.Add(useMaskPage.index);
-
-					auto pageDesc = MapPage(lastPage);
-					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::SetUseMask(BufferPage, bool)#Internal error: Failed to map the last use mask page.");
-					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = useMaskPage.index;
-					msync(numbers, pageSize, MS_SYNC);
-				}
-				else
-				{
-					useMaskPage.index = useMaskPages[useMaskPageIndex];
-				}
-
-				auto pageDesc = MapPage(useMaskPage);
-				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::SetUseMask(BufferPage, bool)#Internal error: Failed to map the specified use mask page.");
-				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-				if (newPage)
-				{
-					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
-				}
-
-				auto& item = numbers[useMaskPageItem];
-				if (available)
-				{
-					vuint64_t mask = ((vuint64_t)1) << useMaskPageShift;
-					item |= mask;
-				}
-				else
-				{
-					vuint64_t mask = ~(((vuint64_t)1) << useMaskPageShift);
-					item &= mask;
-				}
-				msync(numbers, pageSize, MS_SYNC);
-			}
-
-			BufferPage AppendPage()
-			{
-				BufferPage page{totalPageCount};
-				if (auto pageDesc = MapPage(page))
-				{
-					SetUseMask(page, true);
-					return page;
-				}
-				else
-				{
-					return BufferPage::Invalid();
-				}
-			}
-
-			BufferPage GetIndexPage()override
-			{
-				return indexPage;
-			}
-
-			BufferPage AllocatePage()override
-			{
-				BufferPage page = PopFreePage();
-				if (page.index == -1)
-				{
-					return AppendPage();
-				}
-				else
-				{
-					SetUseMask(page, true);
-					return page;
-				}
-			}
-
-			bool FreePage(BufferPage page)override
-			{
-				switch(page.index)
-				{
-					case INDEX_PAGE_INITIAL:
-					case INDEX_PAGE_USEMASK:
-					case INDEX_PAGE_INDEX:
-						return false;
-				}
-
-				if (!GetUseMask(page)) return false;
-				vint index = mappedPages.Keys().IndexOf(page.index);
-				if (index != -1)
-				{
-					if (!UnmapPage(page))
-					{
-						return false;
-					}
-				}
-				PushFreePage(page);
-				SetUseMask(page, false);
-				return true;
-			}
-
-			void* LockPage(BufferPage page)override
-			{
-				if (page.index >= totalPageCount)
+				vuint64_t offset = page.index * pageSize;
+				struct stat fileState;	
+				if (fstat(fileDescriptor, &fileState) == -1)
 				{
 					return nullptr;
 				}
-				if (!GetUseMask(page)) return nullptr;
-				if (auto pageDesc = MapPage(page))
+				if (fileState.st_size < offset + pageSize)
 				{
-					if (pageDesc->locked) return nullptr;
-					pageDesc->locked = true;
-					return pageDesc->address;
+					if (fileState.st_size != offset)
+					{
+						return nullptr;
+					}
+					ftruncate(fileDescriptor, offset + pageSize);
+					totalPageCount = offset / pageSize + 1;
 				}
-				else
+
+				void* address = mmap(nullptr, pageSize, PROT_READ | PROT_WRITE, MAP_SHARED, fileDescriptor, offset);
+				if (address == MAP_FAILED)
 				{
 					return nullptr;
 				}
+				
+				auto pageDesc = MakePtr<BufferPageDesc>();
+				pageDesc->address = address;
+				pageDesc->offset = offset;
+				pageDesc->lastAccessTime = (vuint64_t)time(nullptr);
+				mappedPages.Add(page.index, pageDesc);
+				INCRC(totalUsedPages);
+				return pageDesc;
 			}
-
-			bool UnlockPage(BufferPage page, void* buffer, PersistanceType persistanceType)override
+			else
 			{
-				vint index =mappedPages.Keys().IndexOf(page.index);
-				if (index == -1) return false;
-
 				auto pageDesc = mappedPages.Values()[index];
-				if (pageDesc->address != buffer) return false;
-				if (!pageDesc->locked) return false;
-
-				switch (persistanceType)
-				{
-					case PersistanceType::NoChanging:
-						break;
-					case PersistanceType::Changed:
-						pageDesc->dirty = true;
-						break;
-					case PersistanceType::ChangedAndPersist:
-						msync(pageDesc->address, pageSize, MS_SYNC);
-						pageDesc->dirty = false;
-						break;
-				}
-				pageDesc->locked = false;
-				return true;
-			}	
-
-			void FillUnmapPageCandidates(collections::List<BufferPageTimeTuple>& pages, vint expectCount)override
-			{
-				vint mappedCount = mappedPages.Count();
-				if (mappedCount == 0) return;
-
-				Array<BufferPageTimeTuple> tuples(mappedCount);
-				vint usedCount = 0;
-				for (vint i = 0; i < mappedCount; i++)
-				{
-					auto key = mappedPages.Keys()[i];
-					auto value = mappedPages.Values()[i];
-					if (!value->locked)
-					{
-						BufferPage page{key};
-						tuples[usedCount++] = BufferPageTimeTuple(source, page, value->lastAccessTime);
-					}
-				}
-
-				if (tuples.Count() > 0)
-				{
-					SortLambda(&tuples[0], usedCount, [](const BufferPageTimeTuple& t1, const BufferPageTimeTuple& t2)
-					{
-						if (t1.f2 < t2.f2) return -1;
-						else if (t1.f2 > t2.f2) return 1;
-						else return 0;
-					});
-
-					vint copyCount = usedCount < expectCount ? usedCount : expectCount;
-					for (vint i = 0; i < copyCount; i++)
-					{
-						pages.Add(tuples[i]);
-					}
-				}
+				pageDesc->lastAccessTime = (vuint64_t)time(nullptr);
+				return pageDesc;
 			}
+		}
 
-			void InitializeEmptySource()
+		void FileBufferSource::PushFreePage(BufferPage page)
+		{
+			BufferPage initialPage{initialPages[activeInitialPageIndex]};
+			auto pageDesc = MapPage(initialPage);
+			CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to map the last active initial page.");
+			vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+			vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
+			if (count == initialPageItemCount)
 			{
-				initialPages.Clear();
-				useMaskPages.Clear();
-
+				if (activeInitialPageIndex == initialPages.Count() - 1)
 				{
-					BufferPage page{INDEX_PAGE_INITIAL};
-					auto pageDesc = MapPage(page);
-					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INITIAL.");
-					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+					BufferPage newInitialPage{totalPageCount};
+					numbers[INDEX_INITIAL_NEXTINITIALPAGE] = newInitialPage.index;
+					msync(numbers, pageSize, MS_SYNC);
+
+					auto newPageDesc = MapPage(newInitialPage);
+					CHECK_ERROR(newPageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to create a new initial page.");
+					numbers = (vuint64_t*)newPageDesc->address;
 					memset(numbers, 0, pageSize);
 					numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
-					numbers[INDEX_INITIAL_FREEPAGEITEMS] = 0;
+					numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
+					numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
 					msync(numbers, pageSize, MS_SYNC);
-					initialPages.Add(page.index);
-					activeInitialPageIndex = 0;
-					totalPageCount = 3;
+					initialPages.Add(newInitialPage.index);
+					SetUseMask(newInitialPage, true);
 				}
+				else
 				{
-					BufferPage page{INDEX_PAGE_USEMASK};
-					auto pageDesc = MapPage(page);
-					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_USEMASK.");
-					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-					memset(numbers, 0, pageSize);
-					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
+					BufferPage newInitialPage{initialPages[activeInitialPageIndex + 1]};
+					auto newPageDesc = MapPage(newInitialPage);
+					CHECK_ERROR(newPageDesc != nullptr, L"vl::database::FileBufferSource::PushFreePage(BufferPage)#Internal error: Failed to reuse a created initial page.");
+					numbers = (vuint64_t*)newPageDesc->address;
+					numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
+					numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
 					msync(numbers, pageSize, MS_SYNC);
-					useMaskPages.Add(page.index);
 				}
-				{
-					BufferPage page{INDEX_PAGE_INDEX};
-					auto pageDesc = MapPage(page);
-					CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INDEX.");
-				}
-
-				{
-					BufferPage page{INDEX_PAGE_INITIAL};
-					SetUseMask(page, true);
-				}
-				{
-					BufferPage page{INDEX_PAGE_USEMASK};
-					SetUseMask(page, true);
-				}
-				{
-					BufferPage page{INDEX_PAGE_INDEX};
-					SetUseMask(page, true);
-				}
+				activeInitialPageIndex++;
 			}
-
-			void InitializeExistingSource()
+			else
 			{
-				initialPages.Clear();
-				useMaskPages.Clear();
-				{
-					struct stat fileState;
-					fstat(fileDescriptor, &fileState);
-					totalPageCount = fileState.st_size / pageSize;
-				}
-				{
-					BufferPage page{INDEX_PAGE_INITIAL};
-					
-					while(page.index != INDEX_INVALID)
-					{
-						initialPages.Add(page.index);
-						auto pageDesc = MapPage(page);
-						vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-						page.index = numbers[INDEX_INITIAL_NEXTINITIALPAGE];
+				numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN + count] = page.index;
+				count++;
+				msync(numbers, pageSize, MS_SYNC);
+			}
+		}
 
-						if (numbers[INDEX_INITIAL_FREEPAGEITEMS] != 0)
-						{
-							activeInitialPageIndex = initialPages.Count() - 1;
-						}
-					}
-					
-					if (activeInitialPageIndex == -1)
+		BufferPage FileBufferSource::PopFreePage()
+		{
+			BufferPage page = BufferPage::Invalid();
+			BufferPage initialPage{initialPages[activeInitialPageIndex]};
+			auto pageDesc = MapPage(initialPage);
+			CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::PopFreePage()#Internal error: Failed to map the last active initial page.");
+			vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+			vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
+
+			if (count == 0 && initialPage.index == INDEX_PAGE_INITIAL)
+			{
+				return page;
+			}
+			count--;
+			page.index = numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN + count];
+			msync(numbers, pageSize, MS_SYNC);
+
+			if (count == 0)
+			{
+				activeInitialPageIndex--;
+			}
+			return page;
+		}
+
+		bool FileBufferSource::GetUseMask(BufferPage page)
+		{
+			auto useMaskPageBits = 8 * sizeof(vuint64_t);
+			auto useMaskPageIndex = page.index / (useMaskPageBits * useMaskPageItemCount);
+			auto useMaskPageBitIndex = page.index % (useMaskPageBits * useMaskPageItemCount);
+			auto useMaskPageItem = INDEX_USEMASK_USEMASKBEGIN + useMaskPageBitIndex / useMaskPageBits;
+			auto useMaskPageShift = useMaskPageBitIndex % useMaskPageBits;
+
+			BufferPage useMaskPage{useMaskPages[useMaskPageIndex]};
+			auto pageDesc = MapPage(useMaskPage);
+			CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::GetUseMask(BufferPage)#Internal error: Failed to map the specified use mask page.");
+			vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+			auto& item = numbers[useMaskPageItem];
+			bool result = ((item >> useMaskPageShift) & ((vuint64_t)1)) == 1;
+			msync(numbers, pageSize, MS_SYNC);
+			return result;
+		}
+		
+		void FileBufferSource::SetUseMask(BufferPage page, bool available)
+		{
+			auto useMaskPageBits = 8 * sizeof(vuint64_t);
+			auto useMaskPageIndex = page.index / (useMaskPageBits * useMaskPageItemCount);
+			auto useMaskPageBitIndex = page.index % (useMaskPageBits * useMaskPageItemCount);
+			auto useMaskPageItem = INDEX_USEMASK_USEMASKBEGIN + useMaskPageBitIndex / useMaskPageBits;
+			auto useMaskPageShift = useMaskPageBitIndex % useMaskPageBits;
+			bool newPage = false;
+
+			BufferPage useMaskPage = BufferPage::Invalid();
+
+			if (useMaskPageIndex == useMaskPages.Count())
+			{
+				newPage = true;
+				BufferPage lastPage{useMaskPages[useMaskPageIndex - 1]};
+				useMaskPage = AppendPage();
+				CHECK_ERROR(useMaskPage.IsValid(), L"vl::database::FileBufferSOurce::SetUseMask(BufferPage, bool)#Internal error: Failed to create a new use mask page.");
+				useMaskPages.Add(useMaskPage.index);
+
+				auto pageDesc = MapPage(lastPage);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::SetUseMask(BufferPage, bool)#Internal error: Failed to map the last use mask page.");
+				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+				numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = useMaskPage.index;
+				msync(numbers, pageSize, MS_SYNC);
+			}
+			else
+			{
+				useMaskPage.index = useMaskPages[useMaskPageIndex];
+			}
+
+			auto pageDesc = MapPage(useMaskPage);
+			CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::SetUseMask(BufferPage, bool)#Internal error: Failed to map the specified use mask page.");
+			vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+			if (newPage)
+			{
+				numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
+			}
+
+			auto& item = numbers[useMaskPageItem];
+			if (available)
+			{
+				vuint64_t mask = ((vuint64_t)1) << useMaskPageShift;
+				item |= mask;
+			}
+			else
+			{
+				vuint64_t mask = ~(((vuint64_t)1) << useMaskPageShift);
+				item &= mask;
+			}
+			msync(numbers, pageSize, MS_SYNC);
+		}
+
+		BufferPage FileBufferSource::AppendPage()
+		{
+			BufferPage page{totalPageCount};
+			if (auto pageDesc = MapPage(page))
+			{
+				SetUseMask(page, true);
+				return page;
+			}
+			else
+			{
+				return BufferPage::Invalid();
+			}
+		}
+
+		FileBufferSource::FileBufferSource(BufferSource _source, volatile vuint64_t* _totalUsedPages, vuint64_t _pageSize, const WString& _fileName, int _fileDescriptor)
+			:source(_source)
+			,totalUsedPages(_totalUsedPages)
+			,pageSize(_pageSize)
+			,fileName(_fileName)
+			,fileDescriptor(_fileDescriptor)
+			,initialPageItemCount((_pageSize - INDEX_INITIAL_FREEPAGEITEMBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t))
+			,useMaskPageItemCount((_pageSize - INDEX_USEMASK_USEMASKBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t))
+			,activeInitialPageIndex(-1)
+			,totalPageCount(0)
+		{
+			indexPage.index = INDEX_PAGE_INDEX;
+		}
+
+		void FileBufferSource::InitializeEmptySource()
+		{
+			initialPages.Clear();
+			useMaskPages.Clear();
+
+			{
+				BufferPage page{INDEX_PAGE_INITIAL};
+				auto pageDesc = MapPage(page);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INITIAL.");
+				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+				memset(numbers, 0, pageSize);
+				numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
+				numbers[INDEX_INITIAL_FREEPAGEITEMS] = 0;
+				msync(numbers, pageSize, MS_SYNC);
+				initialPages.Add(page.index);
+				activeInitialPageIndex = 0;
+				totalPageCount = 3;
+			}
+			{
+				BufferPage page{INDEX_PAGE_USEMASK};
+				auto pageDesc = MapPage(page);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_USEMASK.");
+				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+				memset(numbers, 0, pageSize);
+				numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
+				msync(numbers, pageSize, MS_SYNC);
+				useMaskPages.Add(page.index);
+			}
+			{
+				BufferPage page{INDEX_PAGE_INDEX};
+				auto pageDesc = MapPage(page);
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INDEX.");
+			}
+
+			{
+				BufferPage page{INDEX_PAGE_INITIAL};
+				SetUseMask(page, true);
+			}
+			{
+				BufferPage page{INDEX_PAGE_USEMASK};
+				SetUseMask(page, true);
+			}
+			{
+				BufferPage page{INDEX_PAGE_INDEX};
+				SetUseMask(page, true);
+			}
+		}
+
+		void FileBufferSource::InitializeExistingSource()
+		{
+			initialPages.Clear();
+			useMaskPages.Clear();
+			{
+				struct stat fileState;
+				fstat(fileDescriptor, &fileState);
+				totalPageCount = fileState.st_size / pageSize;
+			}
+			{
+				BufferPage page{INDEX_PAGE_INITIAL};
+				
+				while(page.index != INDEX_INVALID)
+				{
+					initialPages.Add(page.index);
+					auto pageDesc = MapPage(page);
+					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+					page.index = numbers[INDEX_INITIAL_NEXTINITIALPAGE];
+
+					if (numbers[INDEX_INITIAL_FREEPAGEITEMS] != 0)
 					{
-						activeInitialPageIndex = 0;
+						activeInitialPageIndex = initialPages.Count() - 1;
 					}
 				}
+				
+				if (activeInitialPageIndex == -1)
 				{
-					BufferPage page{INDEX_PAGE_USEMASK};
-					
-					while(page.index != INDEX_INVALID)
-					{
-						useMaskPages.Add(page.index);
-						auto pageDesc = MapPage(page);
-						vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-						page.index = numbers[INDEX_USEMASK_NEXTUSEMASKPAGE];
-					}
+					activeInitialPageIndex = 0;
 				}
 			}
-		};
+			{
+				BufferPage page{INDEX_PAGE_USEMASK};
+				
+				while(page.index != INDEX_INVALID)
+				{
+					useMaskPages.Add(page.index);
+					auto pageDesc = MapPage(page);
+					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
+					page.index = numbers[INDEX_USEMASK_NEXTUSEMASKPAGE];
+				}
+			}
+		}
+
+		void FileBufferSource::Unload()
+		{
+			FOREACH(Ptr<BufferPageDesc>, pageDesc, mappedPages.Values())
+			{
+				DECRC(totalUsedPages);
+				munmap(pageDesc->address, pageSize);
+			}
+			close(fileDescriptor);
+		}
+
+		BufferSource FileBufferSource::GetBufferSource()
+		{
+			return source;
+		}
+
+		SpinLock& FileBufferSource::GetLock()
+		{
+			return lock;
+		}
+
+		WString FileBufferSource::GetFileName()
+		{
+			return fileName;
+		}
+
+		bool FileBufferSource::UnmapPage(BufferPage page)
+		{
+			vint index = mappedPages.Keys().IndexOf(page.index);
+			if (index == -1)
+			{
+				return false;
+			}
+
+			auto pageDesc = mappedPages.Values()[index];
+			if (pageDesc->locked)
+			{
+				return false;
+			}
+
+			if (pageDesc->dirty)
+			{
+				msync(pageDesc->address, pageSize, MS_SYNC);
+				pageDesc->dirty = false;
+			}
+			munmap(pageDesc->address, pageSize);
+
+			mappedPages.Remove(page.index);
+			DECRC(totalUsedPages);
+			return true;
+		}
+		
+		BufferPage FileBufferSource::GetIndexPage()
+		{
+			return indexPage;
+		}
+
+		BufferPage FileBufferSource::AllocatePage()
+		{
+			BufferPage page = PopFreePage();
+			if (page.index == -1)
+			{
+				return AppendPage();
+			}
+			else
+			{
+				SetUseMask(page, true);
+				return page;
+			}
+		}
+
+		bool FileBufferSource::FreePage(BufferPage page)
+		{
+			switch(page.index)
+			{
+				case INDEX_PAGE_INITIAL:
+				case INDEX_PAGE_USEMASK:
+				case INDEX_PAGE_INDEX:
+					return false;
+			}
+
+			if (!GetUseMask(page)) return false;
+			vint index = mappedPages.Keys().IndexOf(page.index);
+			if (index != -1)
+			{
+				if (!UnmapPage(page))
+				{
+					return false;
+				}
+			}
+			PushFreePage(page);
+			SetUseMask(page, false);
+			return true;
+		}
+
+		void* FileBufferSource::LockPage(BufferPage page)
+		{
+			if (page.index >= totalPageCount)
+			{
+				return nullptr;
+			}
+			if (!GetUseMask(page)) return nullptr;
+			if (auto pageDesc = MapPage(page))
+			{
+				if (pageDesc->locked) return nullptr;
+				pageDesc->locked = true;
+				return pageDesc->address;
+			}
+			else
+			{
+				return nullptr;
+			}
+		}
+
+		bool FileBufferSource::UnlockPage(BufferPage page, void* buffer, PersistanceType persistanceType)
+		{
+			vint index =mappedPages.Keys().IndexOf(page.index);
+			if (index == -1) return false;
+
+			auto pageDesc = mappedPages.Values()[index];
+			if (pageDesc->address != buffer) return false;
+			if (!pageDesc->locked) return false;
+
+			switch (persistanceType)
+			{
+				case PersistanceType::NoChanging:
+					break;
+				case PersistanceType::Changed:
+					pageDesc->dirty = true;
+					break;
+				case PersistanceType::ChangedAndPersist:
+					msync(pageDesc->address, pageSize, MS_SYNC);
+					pageDesc->dirty = false;
+					break;
+			}
+			pageDesc->locked = false;
+			return true;
+		}	
+
+		void FileBufferSource::FillUnmapPageCandidates(collections::List<BufferPageTimeTuple>& pages, vint expectCount)
+		{
+			vint mappedCount = mappedPages.Count();
+			if (mappedCount == 0) return;
+
+			Array<BufferPageTimeTuple> tuples(mappedCount);
+			vint usedCount = 0;
+			for (vint i = 0; i < mappedCount; i++)
+			{
+				auto key = mappedPages.Keys()[i];
+				auto value = mappedPages.Values()[i];
+				if (!value->locked)
+				{
+					BufferPage page{key};
+					tuples[usedCount++] = BufferPageTimeTuple(source, page, value->lastAccessTime);
+				}
+			}
+
+			if (tuples.Count() > 0)
+			{
+				SortLambda(&tuples[0], usedCount, [](const BufferPageTimeTuple& t1, const BufferPageTimeTuple& t2)
+				{
+					if (t1.f2 < t2.f2) return -1;
+					else if (t1.f2 > t2.f2) return 1;
+					else return 0;
+				});
+
+				vint copyCount = usedCount < expectCount ? usedCount : expectCount;
+				for (vint i = 0; i < copyCount; i++)
+				{
+					pages.Add(tuples[i]);
+				}
+			}
+		}
 
 		IBufferSource* CreateFileSource(BufferSource source, volatile vuint64_t* totalUsedPages, vuint64_t pageSize, const WString& fileName, bool createNew)
 		{

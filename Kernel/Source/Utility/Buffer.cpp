@@ -1,4 +1,6 @@
 #include "Buffer.h"
+#include "FileBuffer.h"
+#include "InMemoryBuffer.h"
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -14,9 +16,6 @@ namespace vl
 	namespace database
 	{
 		using namespace collections;
-
-		extern IBufferSource*		CreateMemorySource(BufferSource source, volatile vuint64_t* totalCachedPages, vuint64_t pageSize);
-		extern IBufferSource*		CreateFileSource(BufferSource source, volatile vuint64_t* totalCachedPages, vuint64_t pageSize, const WString& fileName, bool createNew);
 
 /***********************************************************************
 BufferManager
