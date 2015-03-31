@@ -177,7 +177,7 @@ TEST_CASE(Utility_Buffer_AllocateAndSwap)
 }
 
 // Only enable this test case when refactor BufferManager
-TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
+/*TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
 {
 	BufferManager bm(4 KB, 16);
 	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
@@ -211,4 +211,4 @@ TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
 		if (!page.IsValid()) throw 0;
 		if (page != expecting) throw 0;
 	}
-}
+}*/
