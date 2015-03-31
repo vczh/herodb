@@ -70,9 +70,9 @@ namespace vl
 				typedef collections::List<vuint64_t>							PageList;
 			private:
 				vuint64_t					pageSize;
-				PageList					initialPages;
-				vint						activeInitialPageIndex;
-				vuint64_t					initialPageItemCount;
+				PageList					freeItemPages;
+				vint						activeFreeItemPageIndex;
+				vuint64_t					freeItemPageItemCount;
 				FileMapping*				fileMapping = nullptr;
 				FileUseMasks*				fileUseMasks = nullptr;
 

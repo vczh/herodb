@@ -17,16 +17,16 @@
  */
 
 #define INDEX_INVALID (~(vuint64_t)0)
-#define INDEX_PAGE_INITIAL 0
-#define INDEX_PAGE_USEMASK 1
+#define INDEX_PAGE_USEMASK 0
+#define INDEX_PAGE_FREEITEM 1
 #define INDEX_PAGE_INDEX 2
-
-#define INDEX_INITIAL_NEXTINITIALPAGE 0
-#define INDEX_INITIAL_FREEPAGEITEMS 1
-#define INDEX_INITIAL_FREEPAGEITEMBEGIN 2
 
 #define INDEX_USEMASK_NEXTUSEMASKPAGE 0
 #define INDEX_USEMASK_USEMASKBEGIN 1
+
+#define INDEX_FREEITEM_NEXTINITIALPAGE 0
+#define INDEX_FREEITEM_FREEPAGEITEMS 1
+#define INDEX_FREEITEM_FREEPAGEITEMBEGIN 2
 
 namespace vl
 {
@@ -195,6 +195,8 @@ FileUseMasks
 
 			void FileUseMasks::InitializeEmptySource(FileMapping* _fileMapping)
 			{
+				fileMapping = _fileMapping;
+
 				useMaskPages.Clear();
 				BufferPage page{INDEX_PAGE_USEMASK};
 				auto pageDesc = fileMapping->MapPage(page);
@@ -208,6 +210,8 @@ FileUseMasks
 
 			void FileUseMasks::InitializeExistingSource(FileMapping* _fileMapping)
 			{
+				fileMapping = _fileMapping;
+
 				useMaskPages.Clear();
 				BufferPage page{INDEX_PAGE_USEMASK};
 				
@@ -298,8 +302,8 @@ FileFreePages
 
 			FileFreePages::FileFreePages(vuint64_t _pageSize)
 				:pageSize(_pageSize)
-				,initialPageItemCount((_pageSize - INDEX_INITIAL_FREEPAGEITEMBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t))
-				,activeInitialPageIndex(-1)
+				,freeItemPageItemCount((_pageSize - INDEX_FREEITEM_FREEPAGEITEMBEGIN * sizeof(vuint64_t)) / sizeof(vuint64_t))
+				,activeFreeItemPageIndex(-1)
 			{
 			}
 
@@ -308,19 +312,19 @@ FileFreePages
 				fileMapping = _fileMapping;
 				fileUseMasks = _fileUseMasks;
 
-				initialPages.Clear();
-				BufferPage page{INDEX_PAGE_INITIAL};
+				freeItemPages.Clear();
+				BufferPage page{INDEX_PAGE_FREEITEM};
 				auto pageDesc = fileMapping->MapPage(page);
-				CHECK_ERROR(pageDesc != nullptr, L"vl::database::buffer_internal::FileFreePages::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INITIAL.");
+				CHECK_ERROR(pageDesc != nullptr, L"vl::database::buffer_internal::FileFreePages::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_FREEITEM.");
 
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				memset(numbers, 0, pageSize);
-				numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
-				numbers[INDEX_INITIAL_FREEPAGEITEMS] = 0;
+				numbers[INDEX_FREEITEM_NEXTINITIALPAGE] = INDEX_INVALID;
+				numbers[INDEX_FREEITEM_FREEPAGEITEMS] = 0;
 				msync(numbers, pageSize, MS_SYNC);
 
-				initialPages.Add(page.index);
-				activeInitialPageIndex = 0;
+				freeItemPages.Add(page.index);
+				activeFreeItemPageIndex = 0;
 			}
 
 			void FileFreePages::InitializeExistingSource(FileMapping* _fileMapping, FileUseMasks* _fileUseMasks)
@@ -328,69 +332,69 @@ FileFreePages
 				fileMapping = _fileMapping;
 				fileUseMasks = _fileUseMasks;
 
-				initialPages.Clear();
-				BufferPage page{INDEX_PAGE_INITIAL};
+				freeItemPages.Clear();
+				BufferPage page{INDEX_PAGE_FREEITEM};
 				
 				while(page.index != INDEX_INVALID)
 				{
-					initialPages.Add(page.index);
+					freeItemPages.Add(page.index);
 					auto pageDesc = fileMapping->MapPage(page);
 					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-					page.index = numbers[INDEX_INITIAL_NEXTINITIALPAGE];
+					page.index = numbers[INDEX_FREEITEM_NEXTINITIALPAGE];
 
-					if (numbers[INDEX_INITIAL_FREEPAGEITEMS] != 0)
+					if (numbers[INDEX_FREEITEM_FREEPAGEITEMS] != 0)
 					{
-						activeInitialPageIndex = initialPages.Count() - 1;
+						activeFreeItemPageIndex = freeItemPages.Count() - 1;
 					}
 				}
 				
-				if (activeInitialPageIndex == -1)
+				if (activeFreeItemPageIndex == -1)
 				{
-					activeInitialPageIndex = 0;
+					activeFreeItemPageIndex = 0;
 				}
 			}
 
 			void FileFreePages::PushFreePage(BufferPage page)
 			{
-				BufferPage initialPage{initialPages[activeInitialPageIndex]};
+				BufferPage initialPage{freeItemPages[activeFreeItemPageIndex]};
 				auto pageDesc = fileMapping->MapPage(initialPage);
 				CHECK_ERROR(pageDesc != nullptr, L"vl::database::buffer_internal::FileFreePages::PushFreePage(BufferPage)#Internal error: Failed to map the last active initial page.");
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-				vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
-				if (count == initialPageItemCount)
+				vuint64_t& count = numbers[INDEX_FREEITEM_FREEPAGEITEMS];
+				if (count == freeItemPageItemCount)
 				{
-					if (activeInitialPageIndex == initialPages.Count() - 1)
+					if (activeFreeItemPageIndex == freeItemPages.Count() - 1)
 					{
 						BufferPage newInitialPage{fileMapping->GetTotalPageCount()};
-						numbers[INDEX_INITIAL_NEXTINITIALPAGE] = newInitialPage.index;
+						numbers[INDEX_FREEITEM_NEXTINITIALPAGE] = newInitialPage.index;
 						msync(numbers, pageSize, MS_SYNC);
 
 						auto newPageDesc = fileMapping->MapPage(newInitialPage);
 						CHECK_ERROR(newPageDesc != nullptr, L"vl::database::buffer_internal::FileFreePages::PushFreePage(BufferPage)#Internal error: Failed to create a new initial page.");
 						numbers = (vuint64_t*)newPageDesc->address;
 						memset(numbers, 0, pageSize);
-						numbers[INDEX_INITIAL_NEXTINITIALPAGE] = INDEX_INVALID;
-						numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
-						numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
+						numbers[INDEX_FREEITEM_NEXTINITIALPAGE] = INDEX_INVALID;
+						numbers[INDEX_FREEITEM_FREEPAGEITEMS] = 1;
+						numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN] = page.index;
 						msync(numbers, pageSize, MS_SYNC);
-						initialPages.Add(newInitialPage.index);
+						freeItemPages.Add(newInitialPage.index);
 						fileUseMasks->SetUseMask(newInitialPage, true);
 					}
 					else
 					{
-						BufferPage newInitialPage{initialPages[activeInitialPageIndex + 1]};
+						BufferPage newInitialPage{freeItemPages[activeFreeItemPageIndex + 1]};
 						auto newPageDesc = fileMapping->MapPage(newInitialPage);
 						CHECK_ERROR(newPageDesc != nullptr, L"vl::database::buffer_internal::FileFreePages::PushFreePage(BufferPage)#Internal error: Failed to reuse a created initial page.");
 						numbers = (vuint64_t*)newPageDesc->address;
-						numbers[INDEX_INITIAL_FREEPAGEITEMS] = 1;
-						numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN] = page.index;
+						numbers[INDEX_FREEITEM_FREEPAGEITEMS] = 1;
+						numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN] = page.index;
 						msync(numbers, pageSize, MS_SYNC);
 					}
-					activeInitialPageIndex++;
+					activeFreeItemPageIndex++;
 				}
 				else
 				{
-					numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN + count] = page.index;
+					numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN + count] = page.index;
 					count++;
 					msync(numbers, pageSize, MS_SYNC);
 				}
@@ -399,23 +403,23 @@ FileFreePages
 			BufferPage FileFreePages::PopFreePage()
 			{
 				BufferPage page = BufferPage::Invalid();
-				BufferPage initialPage{initialPages[activeInitialPageIndex]};
+				BufferPage initialPage{freeItemPages[activeFreeItemPageIndex]};
 				auto pageDesc = fileMapping->MapPage(initialPage);
 				CHECK_ERROR(pageDesc != nullptr, L"vl::database::buffer_internal::FileFreePages::PopFreePage()#Internal error: Failed to map the last active initial page.");
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
-				vuint64_t& count = numbers[INDEX_INITIAL_FREEPAGEITEMS];
+				vuint64_t& count = numbers[INDEX_FREEITEM_FREEPAGEITEMS];
 
-				if (count == 0 && initialPage.index == INDEX_PAGE_INITIAL)
+				if (count == 0 && initialPage.index == INDEX_PAGE_FREEITEM)
 				{
 					return page;
 				}
 				count--;
-				page.index = numbers[INDEX_INITIAL_FREEPAGEITEMBEGIN + count];
+				page.index = numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN + count];
 				msync(numbers, pageSize, MS_SYNC);
 
 				if (count == 0)
 				{
-					activeInitialPageIndex--;
+					activeFreeItemPageIndex--;
 				}
 				return page;
 			}
@@ -445,7 +449,7 @@ FileBufferSource
 			auto pageDesc = fileMapping.MapPage(BufferPage{INDEX_PAGE_INDEX});
 			CHECK_ERROR(pageDesc != nullptr, L"vl::database::FileBufferSource::InitializeEmptySource()#Internal error: Failed to map INDEX_PAGE_INDEX.");
 
-			fileUseMasks.SetUseMask(BufferPage{INDEX_PAGE_INITIAL}, true);
+			fileUseMasks.SetUseMask(BufferPage{INDEX_PAGE_FREEITEM}, true);
 			fileUseMasks.SetUseMask(BufferPage{INDEX_PAGE_USEMASK}, true);
 			fileUseMasks.SetUseMask(BufferPage{INDEX_PAGE_INDEX}, true);
 		}
@@ -506,7 +510,7 @@ FileBufferSource
 		{
 			switch(page.index)
 			{
-				case INDEX_PAGE_INITIAL:
+				case INDEX_PAGE_FREEITEM:
 				case INDEX_PAGE_USEMASK:
 				case INDEX_PAGE_INDEX:
 					return false;
@@ -637,11 +641,11 @@ FileBufferSource
 }
 
 #undef INDEX_INVALID
-#undef INDEX_PAGE_INITIAL
+#undef INDEX_PAGE_FREEITEM
 #undef INDEX_PAGE_USEMASK
 #undef INDEX_PAGE_INDEX
-#undef INDEX_INITIAL_NEXTINITIALPAGE
-#undef INDEX_INITIAL_FREEPAGEITEMS
-#undef INDEX_INITIAL_FREEPAGEITEMBEGIN
+#undef INDEX_FREEITEM_NEXTINITIALPAGE
+#undef INDEX_FREEITEM_FREEPAGEITEMS
+#undef INDEX_FREEITEM_FREEPAGEITEMBEGIN
 #undef INDEX_USEMASK_NEXTUSEMASKPAGE
 #undef INDEX_USEMASK_USEMASKBEGIN
