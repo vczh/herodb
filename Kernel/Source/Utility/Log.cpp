@@ -80,7 +80,7 @@ LogAddressItem
 			{
 				vuint64_t index = transaction.index / indexPageItemCount;
 				vuint64_t item = transaction.index % indexPageItemCount;
-				CHECK_ERROR(index < indexPages.Count(), L"vl::database::log_internal::LogAddressItem::ReadAddressItem(BufferTransaction)#Internal error: Transaction is out of range.");
+				CHECK_ERROR(index <= indexPages.Count(), L"vl::database::log_internal::LogAddressItem::ReadAddressItem(BufferTransaction)#Internal error: Transaction is out of range.");
 
 				BufferPage page = indexPages[index];
 				auto numbers = (vuint64_t*)bm->LockPage(source, page);
@@ -96,7 +96,7 @@ LogAddressItem
 			{
 				vuint64_t index = transaction.index / indexPageItemCount;
 				vuint64_t item = transaction.index % indexPageItemCount;
-				CHECK_ERROR(index < indexPages.Count(), L"vl::database::log_internal::LogAddressItem::ReadAddressItem(BufferTransaction)#Internal error: Transaction is out of range.");
+				CHECK_ERROR(index <= indexPages.Count(), L"vl::database::log_internal::LogAddressItem::ReadAddressItem(BufferTransaction)#Internal error: Transaction is out of range.");
 
 				if (index < indexPages.Count())
 				{
@@ -552,18 +552,19 @@ LogManager
 
 		Ptr<ILogWriter> LogManager::OpenLogItem(BufferTransaction transaction)
 		{
+			Ptr<ILogWriter> writer;
 			SPIN_LOCK(lock)
 			{
 				if (auto desc = logTransactions.GetTransDesc(transaction))
 				{
 					if (!desc->writer)
 					{
-						desc->writer = new LogWriter(lock, bm, source, &logAddressItem, &logTransactions, &logBlocks, transaction);
-						return desc->writer;
+						writer = new LogWriter(lock, bm, source, &logAddressItem, &logTransactions, &logBlocks, transaction);
+						desc->writer = writer;
 					}
 				}
 			}
-			return nullptr;
+			return writer;
 		}
 
 		Ptr<ILogReader> LogManager::EnumLogItem(BufferTransaction transaction)

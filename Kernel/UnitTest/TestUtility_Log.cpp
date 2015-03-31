@@ -3,6 +3,7 @@
 
 using namespace vl;
 using namespace vl::database;
+using namespace vl::database::log_internal;
 using namespace vl::collections;
 
 extern WString GetTempFolder();
@@ -48,6 +49,7 @@ TEST_CASE(Utility_Log_TransactionWithOneEmptyItem)
 
 	auto writer = log.OpenLogItem(trans);
 	TEST_ASSERT(writer);
+	TEST_ASSERT(writer->GetTransaction() == trans);
 	TEST_ASSERT(writer->IsOpening() == true);
 	TEST_ASSERT(writer->Close() == true);
 	TEST_ASSERT(writer->IsOpening() == false);
@@ -374,60 +376,39 @@ TEST_CASE(Utility_Log_LongItem)
 	TEST_ASSERT(reader->NextItem() == false);
 }
 
-// Only enable this test case when refactor LogManager
-/*TEST_CASE(Utility_Log_ManyTransactions)
+TEST_CASE(Utility_Log_LogTransactionItem)
 {
-	BufferManager bm(4 KB, 16);
-	List<BufferTransaction> transes;
-	List<WString> items;
-
-	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
-	LogManager log(&bm, source, true);
-
-	for (vint i = 0; i < 512; i++)
 	{
-		console::Console::WriteLine(L"    Opening the " + itow(i + 1) + L"-th transaction.");
-		transes.Add(log.OpenTransaction());
-		items.Add(L"This is the " + itow(i + 1) +L"-th message.");
-	}
-	
-	for (vint i = 0; i < transes.Count(); i++)
-	{
-		auto message = items[i];
-		console::Console::WriteLine(L"    Writing \"" + message + L"\".");
-		auto writer = log.OpenLogItem(transes[i]);
-		writer->GetStream().Write((void*)message.Buffer(), message.Length() * sizeof(wchar_t));
-		TEST_ASSERT(writer->Close());
-	}
+		BufferManager bm(4 KB, 16);
+		auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
+		LogAddressItem logAddressItem(&bm, source);
+		logAddressItem.InitializeEmptyItems();
 
-	for (vint i = 0; i < transes.Count(); i++)
-	{
-		auto reader = log.EnumLogItem(transes[i]);
-		auto message = items[i];
-		console::Console::WriteLine(L"    Reading \"" + message + L"\".");
-		wchar_t buffer[1024] = {0};
-		vint size = message.Length() * sizeof(wchar_t);
-		TEST_ASSERT(reader->NextItem() == true);
-		TEST_ASSERT(reader->GetStream().Size() == size);
-		TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
-		TEST_ASSERT(message == buffer);
-	}
+		for (vint i = 0; i < 1024; i++)
+		{
+			BufferTransaction transaction{(vuint64_t)i};
+			BufferPointer address{(vuint64_t)i};
+			TEST_ASSERT(logAddressItem.WriteAddressItem(transaction, address) == true);
+		}
 
-	for (vint i = 0; i < transes.Count(); i++)
-	{
-		log.CloseTransaction(transes[i]);
+		for (vint i = 0; i < 1024; i++)
+		{
+			BufferTransaction transaction{(vuint64_t)i};
+			BufferPointer address{(vuint64_t)i};
+			TEST_ASSERT(logAddressItem.ReadAddressItem(transaction) == address);
+		}
 	}
+	{
+		BufferManager bm(4 KB, 16);
+		auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", false);
+		LogAddressItem logAddressItem(&bm, source);
+		logAddressItem.InitializeExistingItems();
 
-	for (vint i = 0; i < transes.Count(); i++)
-	{
-		auto reader = log.EnumInactiveLogItem(transes[i]);
-		auto message = items[i];
-		console::Console::WriteLine(L"    Reading \"" + message + L"\".");
-		wchar_t buffer[1024] = {0};
-		vint size = message.Length() * sizeof(wchar_t);
-		TEST_ASSERT(reader->NextItem() == true);
-		TEST_ASSERT(reader->GetStream().Size() == size);
-		TEST_ASSERT(reader->GetStream().Read(buffer, size) == size);
-		TEST_ASSERT(message == buffer);
+		for (vint i = 0; i < 1024; i++)
+		{
+			BufferTransaction transaction{(vuint64_t)i};
+			BufferPointer address{(vuint64_t)i};
+			TEST_ASSERT(logAddressItem.ReadAddressItem(transaction) == address);
+		}
 	}
-}*/
+}
