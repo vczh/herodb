@@ -417,6 +417,10 @@ FileFreePages
 				if (count == 0)
 				{
 					activeFreeItemPageIndex--;
+					if (activeFreeItemPageIndex == -1)
+					{
+						activeFreeItemPageIndex = 0;
+					}
 				}
 				return page;
 			}

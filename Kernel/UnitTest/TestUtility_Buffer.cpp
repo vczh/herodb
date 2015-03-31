@@ -210,44 +210,33 @@ TEST_CASE(Utility_Buffer_FileFreePages)
 	fileUseMasks.InitializeEmptySource(&fileMapping);
 	fileFreePages.InitializeEmptySource(&fileMapping, &fileUseMasks);
 
+	vint pushCount = 1024;
+	for (vint i = 0; i < pushCount; i++)
+	{
+		BufferPage page{(vuint64_t)(1024 + i)};
+		console::Console::WriteLine(L"Pushing free page: " + itow(page.index));
+		fileFreePages.PushFreePage(page);
+	}
+	for (vint i = pushCount - 1; i >= 0; i--)
+	{
+		auto page = fileFreePages.PopFreePage();
+		console::Console::WriteLine(L"Popping free page: " + itow(page.index) + L", expecting " + itow(1024 + i));
+		TEST_ASSERT(page.index == 1024 + i);
+	}
+	for (vint i = 0; i < pushCount; i++)
+	{
+		BufferPage page{(vuint64_t)(1024 + i)};
+		console::Console::WriteLine(L"Pushing free page: " + itow(page.index));
+		fileFreePages.PushFreePage(page);
+	}
+	for (vint i = pushCount - 1; i >= 0; i--)
+	{
+		auto page = fileFreePages.PopFreePage();
+		console::Console::WriteLine(L"Popping free page: " + itow(page.index) + L", expecting " + itow(1024 + i));
+		TEST_ASSERT(page.index == 1024 + i);
+	}
+
 	fileMapping.UnmapAllPages();
 	CloseFileForFileSource(fd);
 	TEST_ASSERT(totalUsedPages == 0);
 }
-
-// Only enable this test case when refactor BufferManager
-/*TEST_CASE(Utility_Buffer_File_AllocateFreeManyTimes)
-{
-	BufferManager bm(4 KB, 16);
-	auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
-	List<BufferPage> pages;
-	const vint TotalCount = 1024;
-
-	for (vint i = 0; i < TotalCount; i++)
-	{
-		console::Console::Write(L"Allocating " + itow(i) + L" ... ");
-		auto page = bm.AllocatePage(source);
-		console::Console::WriteLine(L" => page " + itow(page.index));
-
-		if (!page.IsValid()) throw 0;
-		pages.Add(page);
-	}
-
-	for (vint i = 0; i < TotalCount; i++)
-	{
-		console::Console::WriteLine(L"Freeing " + itow(i) + L" ... ");
-		auto page = pages[i];
-		if (!bm.FreePage(source, page)) throw 0;
-	}
-
-	for (vint i = 0; i < TotalCount; i++)
-	{
-		console::Console::Write(L"Allocating " + itow(i) + L" ... ");
-		auto page = bm.AllocatePage(source);
-		auto expecting = pages[TotalCount - i - 1];
-		console::Console::WriteLine(L" => page " + itow(page.index) + L", expecting " + itow(expecting.index));
-
-		if (!page.IsValid()) throw 0;
-		if (page != expecting) throw 0;
-	}
-}*/
