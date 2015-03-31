@@ -57,7 +57,7 @@ FileMapping
 			void FileMapping::InitializeExistingSource()
 			{
 				struct stat fileState;
-				fstat(fileDescriptor, &fileState);
+				CHECK_ERROR(fstat(fileDescriptor, &fileState) != -1, L"vl::database::buffer_internal::FileMapping::InitializeExistingSource()#Internal error: Failed to call fstat.");
 				totalPageCount = fileState.st_size / pageSize;
 			}
 
@@ -73,10 +73,7 @@ FileMapping
 				{
 					vuint64_t offset = page.index * pageSize;
 					struct stat fileState;	
-					if (fstat(fileDescriptor, &fileState) == -1)
-					{
-						return nullptr;
-					}
+					CHECK_ERROR(fstat(fileDescriptor, &fileState) != -1, L"vl::database::buffer_internal::FileMapping::InitializeExistingSource()#Internal error: Failed to call fstat.");
 					if (fileState.st_size < offset + pageSize)
 					{
 						if (fileState.st_size != offset)
@@ -138,10 +135,10 @@ FileMapping
 
 				if (pageDesc->dirty)
 				{
-					msync(pageDesc->address, pageSize, MS_SYNC);
+					CHECK_ERROR(msync(pageDesc->address, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileMapping::UnmapPage(BufferPage)#Internal error: Failed to call msync.");
 					pageDesc->dirty = false;
 				}
-				munmap(pageDesc->address, pageSize);
+				CHECK_ERROR(munmap(pageDesc->address, pageSize) != -1, L"vl::database::buffer_internal::FileMapping::UnmapPage(BufferPage)#Internal error: Failed to call munmap.");
 
 				mappedPages.Remove(page.index);
 				DECRC(totalUsedPages);
@@ -153,7 +150,7 @@ FileMapping
 				FOREACH(Ptr<BufferPageDesc>, pageDesc, mappedPages.Values())
 				{
 					DECRC(totalUsedPages);
-					munmap(pageDesc->address, pageSize);
+					CHECK_ERROR(munmap(pageDesc->address, pageSize) != -1, L"vl::database::buffer_internal::FileMapping::UnmapAllPages(BufferPage)#Internal error: Failed to call munmap.");
 				}
 			}
 
@@ -204,7 +201,7 @@ FileUseMasks
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				memset(numbers, 0, pageSize);
 				numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
-				msync(numbers, pageSize, MS_SYNC);
+				CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileUseMasks::InitializeEmptySource()#Internal error: Failed to call msync.");
 				useMaskPages.Add(page.index);
 			}
 
@@ -238,7 +235,7 @@ FileUseMasks
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				auto& item = numbers[useMaskPageItem];
 				bool result = ((item >> useMaskPageShift) & ((vuint64_t)1)) == 1;
-				msync(numbers, pageSize, MS_SYNC);
+				CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileUseMasks::GetUseMask(page)#Internal error: Failed to call msync.");
 				return result;
 			}
 			
@@ -266,7 +263,7 @@ FileUseMasks
 					CHECK_ERROR(pageDesc != nullptr, L"vl::database::buffer_internal::FileUseMasks::SetUseMask(BufferPage, bool)#Internal error: Failed to map the last use mask page.");
 					vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = useMaskPage.index;
-					msync(numbers, pageSize, MS_SYNC);
+					CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileUseMasks::SetUseMask(page, bool)#Internal error: Failed to call msync.");
 				}
 				else
 				{
@@ -292,7 +289,7 @@ FileUseMasks
 					vuint64_t mask = ~(((vuint64_t)1) << useMaskPageShift);
 					item &= mask;
 				}
-				msync(numbers, pageSize, MS_SYNC);
+				CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileUseMasks::SetUseMask(page, bool)#Internal error: Failed to call msync.");
 			}
 		}
 
@@ -321,7 +318,7 @@ FileFreePages
 				memset(numbers, 0, pageSize);
 				numbers[INDEX_FREEITEM_NEXTINITIALPAGE] = INDEX_INVALID;
 				numbers[INDEX_FREEITEM_FREEPAGEITEMS] = 0;
-				msync(numbers, pageSize, MS_SYNC);
+				CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileFreePages::InitializeEmptySource()#Internal error: Failed to call msync.");
 
 				freeItemPages.Add(page.index);
 				activeFreeItemPageIndex = 0;
@@ -376,7 +373,7 @@ FileFreePages
 						numbers[INDEX_FREEITEM_NEXTINITIALPAGE] = INDEX_INVALID;
 						numbers[INDEX_FREEITEM_FREEPAGEITEMS] = 1;
 						numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN] = page.index;
-						msync(numbers, pageSize, MS_SYNC);
+						CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileFreePages::PushFreePage(page)#Internal error: Failed to call msync.");
 						freeItemPages.Add(newInitialPage.index);
 						fileUseMasks->SetUseMask(newInitialPage, true);
 					}
@@ -388,7 +385,7 @@ FileFreePages
 						numbers = (vuint64_t*)newPageDesc->address;
 						numbers[INDEX_FREEITEM_FREEPAGEITEMS] = 1;
 						numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN] = page.index;
-						msync(numbers, pageSize, MS_SYNC);
+						CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileFreePages::PushFreePage(page)#Internal error: Failed to call msync.");
 					}
 					activeFreeItemPageIndex++;
 				}
@@ -396,7 +393,7 @@ FileFreePages
 				{
 					numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN + count] = page.index;
 					count++;
-					msync(numbers, pageSize, MS_SYNC);
+					CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileFreePages::PushFreePage(page)#Internal error: Failed to call msync.");
 				}
 			}
 
@@ -415,7 +412,7 @@ FileFreePages
 				}
 				count--;
 				page.index = numbers[INDEX_FREEITEM_FREEPAGEITEMBEGIN + count];
-				msync(numbers, pageSize, MS_SYNC);
+				CHECK_ERROR(msync(numbers, pageSize, MS_SYNC) != -1, L"vl::database::buffer_internal::FileFreePages::PopFreePage()#Internal error: Failed to call msync.");
 
 				if (count == 0)
 				{
