@@ -181,7 +181,6 @@ TEST_CASE(Utility_Buffer_AllocateAndSwap)
 
 TEST_CASE(Utility_Buffer_FileUseMasks)
 {
-	return;
 	vuint64_t pageSize = 4 KB;
 	auto fd = CreateNewFileForFileSource(TEMP_DIR L"db.bin");
 	volatile vuint64_t totalUsedPages = 0;
@@ -199,7 +198,6 @@ TEST_CASE(Utility_Buffer_FileUseMasks)
 
 TEST_CASE(Utility_Buffer_FileFreePages)
 {
-	return;
 	vuint64_t pageSize = 4 KB;
 	auto fd = CreateNewFileForFileSource(TEMP_DIR L"db.bin");
 	volatile vuint64_t totalUsedPages = 0;

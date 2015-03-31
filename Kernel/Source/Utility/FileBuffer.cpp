@@ -628,7 +628,7 @@ FileBufferSource
 			}
 			else
 			{
-				fileDescriptor = OpenExistingFileForFileSource(fileDescriptor);
+				fileDescriptor = OpenExistingFileForFileSource(fileName);
 			}
 
 			if (fileDescriptor == -1)
