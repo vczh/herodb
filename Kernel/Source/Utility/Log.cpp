@@ -329,12 +329,12 @@ LogWriter
 						vuint64_t itemHeader = numberCount * sizeof(vuint64_t);
 						vuint64_t blockSize = itemHeader + remain;
 						BufferPointer address;
-						CHECK_ERROR(logBlocks->AllocateBlock(itemHeader, blockSize, address), L"vl::database::LogWriter::Close()#Internal error: Unable to allocate blocks for saving logs.");
+						CHECK_ERROR(logBlocks->AllocateBlock(itemHeader, blockSize, address), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to allocate blocks for saving logs.");
 						vuint64_t dataSize = blockSize - itemHeader;
 
 						BufferPage page;
 						vuint64_t offset;
-						CHECK_ERROR(bm->DecodePointer(address, page, offset), L"vl::database::LogWriter::Close()#Internal error: Unable to decode block address for saving logs.");
+						CHECK_ERROR(bm->DecodePointer(address, page, offset), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to decode block address for saving logs.");
 						auto pointer = (char*)bm->LockPage(source, page);
 						auto numbers = (vuint64_t*)(pointer + offset);
 
@@ -349,24 +349,24 @@ LogWriter
 								*numbers ++ = INDEX_INVALID;
 						}
 						stream.Read(numbers, (remain < dataSize ? remain : dataSize));
-						CHECK_ERROR(bm->UnlockPage(source, page, pointer, PersistanceType::ChangedAndPersist), L"vl::database::LogWriter::Close()#Internal error: Unable to unlock page for saving logs.");
+						CHECK_ERROR(bm->UnlockPage(source, page, pointer, PersistanceType::ChangedAndPersist), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to unlock page for saving logs.");
 						
 						if (numberCount == 4)
 						{
 							desc->firstItem = address;
-							CHECK_ERROR(logAddressItem->WriteAddressItem(trans, address), L"vl::database::LogWriter::Close()#Internal error: Unable to save logs.");
+							CHECK_ERROR(logAddressItem->WriteAddressItem(trans, address), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to save logs.");
 						}
 						else if (desc->lastItem.IsValid())
 						{
 							BufferPage lastItemPage;
 							vuint64_t lastItemOffset;
-							CHECK_ERROR(bm->DecodePointer(desc->lastItem, lastItemPage, lastItemOffset), L"vl::database::LogWriter::Close()#Internal error: Unable to decode block address for saving logs.");
+							CHECK_ERROR(bm->DecodePointer(desc->lastItem, lastItemPage, lastItemOffset), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to decode block address for saving logs.");
 
 							auto pointer = bm->LockPage(source, lastItemPage);
 							*(vuint64_t*)((char*)pointer + lastItemOffset) = address.index;
-							CHECK_ERROR(bm->UnlockPage(source, lastItemPage, pointer, PersistanceType::ChangedAndPersist), L"vl::database::LogWriter::Close()#Internal error: Unable to save logs.");
+							CHECK_ERROR(bm->UnlockPage(source, lastItemPage, pointer, PersistanceType::ChangedAndPersist), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to save logs.");
 						}
-						CHECK_ERROR(bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t)), L"vl::database::LogWriter::Close()#Internal error: Unable to encode block address for saving logs.");
+						CHECK_ERROR(bm->EncodePointer(desc->lastItem, page, offset + (numberCount - 1) * sizeof(vuint64_t)), L"vl::database::log_internal::LogWriter::Close()#Internal error: Unable to encode block address for saving logs.");
 
 						if (remain > dataSize)
 						{
@@ -413,10 +413,10 @@ LogReader
 				{
 					BufferPage page;
 					vuint64_t offset;
-					CHECK_ERROR(bm->DecodePointer(item, page, offset), L"vl::database::LogReader::LogReader(LogManager*, BufferTransaction)#Internal error: Unable to decode block pointer for reading logs.");
+					CHECK_ERROR(bm->DecodePointer(item, page, offset), L"vl::database::log_internal::LogReader::LogReader(LogManager*, BufferTransaction)#Internal error: Unable to decode block pointer for reading logs.");
 					
 					offset += sizeof(vuint64_t);
-					CHECK_ERROR(bm->EncodePointer(item, page, offset), L"vl::database::LogReader::LogReader(LogManager*, BufferTransaction)#Internal error: Unable to decode block pointer for reading logs.");
+					CHECK_ERROR(bm->EncodePointer(item, page, offset), L"vl::database::log_internal::LogReader::LogReader(LogManager*, BufferTransaction)#Internal error: Unable to decode block pointer for reading logs.");
 				}
 			}
 
@@ -441,7 +441,7 @@ LogReader
 
 				BufferPage page;
 				vuint64_t offset;
-				CHECK_ERROR(bm->DecodePointer(item, page, offset), L"vl::database::LogReader::NextItem()#Internal error: Unable to decode block pointer.");
+				CHECK_ERROR(bm->DecodePointer(item, page, offset), L"vl::database::log_internal::LogReader::NextItem()#Internal error: Unable to decode block pointer.");
 				auto pointer = bm->LockPage(source, page);
 				auto numbers = (vuint64_t*)((char*)pointer + offset);
 				auto remain = numbers[0];
@@ -462,13 +462,13 @@ LogReader
 					}
 
 					remain -= blockSize;
-					CHECK_ERROR(bm->UnlockPage(source, page, pointer, PersistanceType::NoChanging), L"vl::database::LogReader::NextItem()#Internal error: Unable to unlock page.");
+					CHECK_ERROR(bm->UnlockPage(source, page, pointer, PersistanceType::NoChanging), L"vl::database::log_internal::LogReader::NextItem()#Internal error: Unable to unlock page.");
 
 					if (remain == 0 || !item.IsValid())
 					{
 						break;
 					}
-					CHECK_ERROR(bm->DecodePointer(item, page, offset), L"vl::database::LogReader::NextItem()#Internal error: Unable to decode pointer.");
+					CHECK_ERROR(bm->DecodePointer(item, page, offset), L"vl::database::log_internal::LogReader::NextItem()#Internal error: Unable to decode pointer.");
 					pointer = bm->LockPage(source, page);
 					numbers = (vuint64_t*)((char*)pointer + offset);
 					block = numbers;
