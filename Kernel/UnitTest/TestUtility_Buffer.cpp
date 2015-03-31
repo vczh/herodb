@@ -1,8 +1,11 @@
 #include "UnitTest.h"
 #include "../Source/Utility/Buffer.h"
+#include "../Source/Utility/InMemoryBuffer.h"
+#include "../Source/Utility/FileBuffer.h"
 
 using namespace vl;
 using namespace vl::database;
+using namespace vl::database::buffer_internal;
 using namespace vl::collections;
 
 extern WString GetTempFolder();
@@ -174,6 +177,44 @@ TEST_CASE(Utility_Buffer_AllocateAndSwap)
 			TEST_ASSERT_CACHE;
 		}
 	}
+}
+
+TEST_CASE(Utility_Buffer_FileUseMasks)
+{
+	return;
+	vuint64_t pageSize = 4 KB;
+	auto fd = CreateNewFileForFileSource(TEMP_DIR L"db.bin");
+	volatile vuint64_t totalUsedPages = 0;
+
+	FileMapping fileMapping(pageSize, fd, &totalUsedPages);
+	FileUseMasks fileUseMasks(pageSize, fd);
+
+	fileMapping.InitializeEmptySource();
+	fileUseMasks.InitializeEmptySource(&fileMapping);
+
+	fileMapping.UnmapAllPages();
+	CloseFileForFileSource(fd);
+	TEST_ASSERT(totalUsedPages == 0);
+}
+
+TEST_CASE(Utility_Buffer_FileFreePages)
+{
+	return;
+	vuint64_t pageSize = 4 KB;
+	auto fd = CreateNewFileForFileSource(TEMP_DIR L"db.bin");
+	volatile vuint64_t totalUsedPages = 0;
+
+	FileMapping fileMapping(pageSize, fd, &totalUsedPages);
+	FileUseMasks fileUseMasks(pageSize, fd);
+	FileFreePages fileFreePages(pageSize);
+
+	fileMapping.InitializeEmptySource();
+	fileUseMasks.InitializeEmptySource(&fileMapping);
+	fileFreePages.InitializeEmptySource(&fileMapping, &fileUseMasks);
+
+	fileMapping.UnmapAllPages();
+	CloseFileForFileSource(fd);
+	TEST_ASSERT(totalUsedPages == 0);
 }
 
 // Only enable this test case when refactor BufferManager

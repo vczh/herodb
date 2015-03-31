@@ -46,7 +46,6 @@ namespace vl
 
 			class FileUseMasks : public Object
 			{
-				typedef collections::Dictionary<vuint64_t, Ptr<BufferPageDesc>>	PageMap;
 				typedef collections::List<vuint64_t>							PageList;
 			private:
 				int							fileDescriptor;
@@ -89,8 +88,6 @@ namespace vl
 
 		class FileBufferSource : public Object, public IBufferSource
 		{
-			typedef collections::Dictionary<vuint64_t, Ptr<BufferPageDesc>>		PageMap;
-			typedef collections::List<vuint64_t>								PageList;
 		private:
 			BufferSource					source;
 			vuint64_t						pageSize;
@@ -123,7 +120,10 @@ namespace vl
 			void							FillUnmapPageCandidates(collections::List<BufferPageTimeTuple>& pages, vint expectCount)override;
 		};
 
-		extern IBufferSource*		CreateFileSource(BufferSource source, volatile vuint64_t* totalUsedPages, vuint64_t pageSize, const WString& fileName, bool createNew);	
+		int									CreateNewFileForFileSource(const WString& fileName);
+		int									OpenExistingFileForFileSource(const WString& fileName);
+		void								CloseFileForFileSource(int fileDescriptor);
+		extern IBufferSource*				CreateFileSource(BufferSource source, volatile vuint64_t* totalUsedPages, vuint64_t pageSize, const WString& fileName, bool createNew);	
 	}
 }
 

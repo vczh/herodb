@@ -278,6 +278,7 @@ TEST_CASE(Utility_Log_OpenTransactionsParallel)
 	List<WString> items;
 
 	{
+		TEST_ASSERT(bm.GetCurrentlyCachedPageCount() == 0);
 		auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", true);
 		LogManager log(&bm, source, true);
 
@@ -327,6 +328,7 @@ TEST_CASE(Utility_Log_OpenTransactionsParallel)
 	}
 
 	{
+		TEST_ASSERT(bm.GetCurrentlyCachedPageCount() == 0);
 		auto source = bm.LoadFileSource(TEMP_DIR L"db.bin", false);
 		LogManager log(&bm, source, false);
 

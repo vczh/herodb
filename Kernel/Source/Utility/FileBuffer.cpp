@@ -464,7 +464,7 @@ FileBufferSource
 		void FileBufferSource::Unload()
 		{
 			fileMapping.UnmapAllPages();
-			close(fileDescriptor);
+			CloseFileForFileSource(fileDescriptor);
 		}
 
 		BufferSource FileBufferSource::GetBufferSource()
@@ -606,17 +606,32 @@ FileBufferSource
 			}
 		}
 
+		int CreateNewFileForFileSource(const WString& fileName)
+		{
+			auto mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+			return open(wtoa(fileName).Buffer(), O_CREAT | O_TRUNC | O_RDWR, mode);
+		}
+
+		int OpenExistingFileForFileSource(const WString& fileName)
+		{
+			return open(wtoa(fileName).Buffer(), O_RDWR);
+		}
+
+		void CloseFileForFileSource(int fileDescriptor)
+		{
+			close(fileDescriptor);
+		}
+
 		IBufferSource* CreateFileSource(BufferSource source, volatile vuint64_t* totalUsedPages, vuint64_t pageSize, const WString& fileName, bool createNew)
 		{
 			int fileDescriptor = 0;
 			if (createNew)
 			{
-				auto mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
-				fileDescriptor = open(wtoa(fileName).Buffer(), O_CREAT | O_TRUNC | O_RDWR, mode);
+				fileDescriptor = CreateNewFileForFileSource(fileName);
 			}
 			else
 			{
-				fileDescriptor = open(wtoa(fileName).Buffer(), O_RDWR);
+				fileDescriptor = OpenExistingFileForFileSource(fileDescriptor);
 			}
 
 			if (fileDescriptor == -1)
