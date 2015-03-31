@@ -275,6 +275,7 @@ FileUseMasks
 				vuint64_t* numbers = (vuint64_t*)pageDesc->address;
 				if (newPage)
 				{
+					memset(numbers, 0, pageSize);
 					numbers[INDEX_USEMASK_NEXTUSEMASKPAGE] = INDEX_INVALID;
 				}
 

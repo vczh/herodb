@@ -191,6 +191,35 @@ TEST_CASE(Utility_Buffer_FileUseMasks)
 	fileMapping.InitializeEmptySource();
 	fileUseMasks.InitializeEmptySource(&fileMapping);
 
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1023}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1024}) == false);
+
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)1024}, true);
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)32768}, true);
+
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1023}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1024}) == true);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)32767}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)32768}) == true);
+
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)1023}, true);
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)1024}, false);
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)32767}, true);
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)32768}, false);
+
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1023}) == true);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1024}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)32767}) == true);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)32768}) == false);
+
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)1023}, false);
+	fileUseMasks.SetUseMask(BufferPage{(vuint64_t)32767}, false);
+
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1023}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)1024}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)32767}) == false);
+	TEST_ASSERT(fileUseMasks.GetUseMask(BufferPage{(vuint64_t)32768}) == false);
+
 	fileMapping.UnmapAllPages();
 	CloseFileForFileSource(fd);
 	TEST_ASSERT(totalUsedPages == 0);
