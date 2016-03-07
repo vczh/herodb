@@ -1,5 +1,6 @@
 * Rewrite the whole thing using Clion and VS
 * Separate file mapping object from memory management
+* MVCC
 * No log fragment, backend run a transaction in the following sequence:
     * Create log
     * Run the transaction and fill the log
