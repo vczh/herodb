@@ -3,12 +3,14 @@
 - `u?int(8|16|32|64)?`
 - `float(32|64)?`
 - `string`
-- `object`
 - `view`
 - `mixin`
+- `data`
+- `object`
+- `index`
+- `this`
 - `type`
 - `newtype`
-- `data`
 
 # TYPE
 
@@ -26,14 +28,19 @@
 ### MISC
 - `VALUE-TYPE:`: PRIMITIVE-TYPE, COMPLEX-TYPE
 - `VALUE-TYPE?`: nullable
-- `VALUE-TYPE&`: instance, treat like an object
-- `VALUE-TYPE*`: nullable instance
+- `OBJECT-TYPE&`: instance, treat like an object
+- `OBJECT-TYPE*`: nullable instance
 - operators:
 	- `x^` : dereference, fail if null
 
 ### DATA-COLLECTION:
 ```
-data ({s : Student, t : Teacher, e : Exam, score : int}) {
+data ({
+	s : Student,
+	t : Teacher,
+	e : Exam,
+	score : int
+}) index {
 	Hash(s),
 	Hash(e),
 	Unique(e, s)
@@ -44,50 +51,35 @@ data ({s : Student, t : Teacher, e : Exam, score : int}) {
 }
 ```
 
+### OBJECT-COLLECTION:
+```
+newtype Person = object({
+	name : string,
+	id : string
+}) index {
+	Hash(string),
+	Unique(id)
+};
+
+newtype Student = object : Person({
+	school : School&
+});
+// Student inherits from Person, so it also inherit Person's index
+
+newtype School = object({
+	name : string,
+	students : data(Student) {
+		Unique(data),
+		Require(this == data.school)
+	}
+}) index {
+	Unique(name)
+}
+```
+
 ### TYPE-DECLARATION:
 - `type NAME = TYPE;`
 - `newtype NAME = TYPE;`
-
-# COLLECTION AND INDEX / CONSTRAINT
-
-```
-newtype Person = {
-	name : string,
-	id : string
-};
-
-newtype School = {
-	students : data(Student&) {
-		NotNull(data),
-		Unique(data)
-	}
-};
-
-newtype Student = {
-	person : mixin(Person),
-	school : School&
-};
-```
-
-entity Person
-(
-	name : string,
-	id : string,
-) index Hash(name),
-		Unique(id)
-		;
-
-entity School
-(
-	students : data(Student)
-);
-
-entity Student : Person
-(
-	school : School
-);
-
-entity index 1..n Student.school * School.students;	# school and students are connected, verified and modifiable
 
 ================================================
 
