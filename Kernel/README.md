@@ -204,3 +204,6 @@ query AverageTop3ScorePerStudent(student : string, out average : int) index {
 
 # Expressions (cannot run backward)
 
+# Transaction
+
+# Database Updating
