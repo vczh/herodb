@@ -72,7 +72,7 @@ data People(default p : Person) index {
 	Hash(name);
 	Unique(data.id);
 }
-// data Xs(default x : X) means every instance X will  automatically appears in Xs
+// data Xs(default x : X) means every instance X will automatically appear in Xs
 // every object should have exactly one default data collection
 
 object Student : Person {
