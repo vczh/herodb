@@ -1,16 +1,15 @@
-# KEYWORDS
+# TYPE KEYWORDS
 - bool
 - `u?int(8|16|32|64)?`
 - `float(32|64)?`
 - `string`
-- `view`
-- `mixin`
-- `data`
 - `object`
-- `index`
-- `this`
+
+# DEFINITION KEYWORDS
 - `type`
 - `newtype`
+- `data`
+- `index`
 
 # TYPE
 
@@ -23,19 +22,20 @@
 
 ### COMPLEX-TYPE
 - `{Spring | Summer | Autumn | Winter}`
-- `{x : int, y : int, z : int, point2d : view(x, u : y)}`
+- `{x : int, y : int, z : int}`
+- `object [: BASE-TYPE, ...] STRUCT-TYPE`
 
 ### MISC
 - `VALUE-TYPE:`: PRIMITIVE-TYPE, COMPLEX-TYPE
 - `VALUE-TYPE?`: nullable
-- `OBJECT-TYPE&`: instance, treat like an object
-- `OBJECT-TYPE*`: nullable instance
+- `STRUCT-TYPE&`: instance, treat like an object
+- `STRUCT-TYPE*`: nullable instance
 - operators:
 	- `x^` : dereference, fail if null
 
 ### DATA-COLLECTION:
 ```
-data ({
+data AttendExams = ({
 	s : Student,
 	t : Teacher,
 	e : Exam,
@@ -53,49 +53,44 @@ data ({
 
 ### OBJECT-COLLECTION:
 ```
-newtype Person = object({
+newtype Person = object {
 	name : string,
 	id : string
-}) index {
-	Hash(string),
-	Unique(id)
+};
+data People = (default Person&) index {
+	Hash(name),
+	Unique(data.id)
+};
+// data Xs = (default X&) means every instance X will be automatically records in Xs
+// every object should have exactly one default data collection
+
+newtype Student = object : Person {
+};
+data Students = (default Student&) index {
+	People(data)
 };
 
-newtype Student = object : Person({
-	school : School&
-});
-// Student inherits from Person, so it also inherit Person's index
-
-newtype School = object({
+newtype School = object {
 	name : string,
-	students : data(Student) {
-		Unique(data),
-		Require(this == data.school)
-	}
-}) index {
+};
+data Schools = (default School&) index {
 	Unique(name)
+};
+
+data AttendSchool = ({
+	student : Student&,
+	school : School&
+}) index {
+	Require(Students(student), Schools(school))
+	Partition(student) {
+		Unique(school)
+	}
 }
 ```
 
 ### TYPE-DECLARATION:
 - `type NAME = TYPE;`
 - `newtype NAME = TYPE;`
-
-================================================
-
-entity Tree
-(
-	data				: int,
-	left				: Tree,
-	right				: Tree,
-	readonly parent		: Tree,
-	readonly children	: data(tree)
-) index	Ordered(data)
-		;
-
-entity index 1..1 Tree.left > Tree.parent;		# parent is readonly, left is modifiable, verified
-entity index 1..1 Tree.right > Tree.parent;		# parent is readonly, right is modifiable, verified
-entity index 1..n Tree.parent * Tree.children;	# parent and children are connected, so children is readable
 
 ################################################
 # QUERY, CACHED QUERY AND AGGREGATION
