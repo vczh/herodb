@@ -30,18 +30,18 @@
 
 ### TYPE-DECLARATION:
 - `type NAME = TYPE;`
-- `enum Seasons {Spring | Summer | Autumn | Winter}
+- `enum Seasons {Spring, Summer, Autumn, Winter}`
 - `struct Point {x : int, y : int}`
-- `object NAME [: BASE-TYPE] STRUCT-TYPE;`
+- `object NAME [: BASE-TYPE] STRUCT-TYPE`
 
 ### DATA-COLLECTION:
 ```
-data AttendExams = ({
+data AttendExams(
 	s : Student,
 	t : Teacher,
 	e : Exam,
 	score : int
-}) index {
+) index {
 	Hash(s),
 	Hash(e),
 	Unique(e, s)
@@ -57,31 +57,31 @@ data AttendExams = ({
 object Person {
 	name : string,
 	id : string
-};
-data People = (default Person) index {
+}
+data People(default p : Person) index {
 	Hash(name),
 	Unique(data.id)
-};
-// data Xs = (default X) means every instance X will  automatically appears in Xs
+}
+// data Xs(default x : X) means every instance X will  automatically appears in Xs
 // every object should have exactly one default data collection
 
 object Student : Person {
-};
-data Students = (default Student) index {
+}
+data Students(default s : Student) index {
 	People(data)
-};
+}
 
 object School {
 	name : string,
-};
-data Schools = (default School) index {
+}
+data Schools(default s : School) index {
 	Unique(name)
-};
+}
 
-data AttendSchool = ({
+data AttendSchool (
 	student : Student,
 	school : School
-}) index {
+) index {
 	Require(Students(student), Schools(school))
 	Partition(student) {
 		Unique(school)
@@ -89,9 +89,25 @@ data AttendSchool = ({
 }
 ```
 
-################################################
-# QUERY, CACHED QUERY AND AGGREGATION
+# QUERY
 
+```
+enum Gender {
+	Male,
+	Female
+}
+
+object Person {
+	name : string,
+	gender : Gender
+}
+
+data PersonRelationship(parent : Person, child : Person) index {
+	Partition(child) {
+		Unique(Person)
+	}
+}
+```
 enum Gender = Male | Female;
 
 entity Person
