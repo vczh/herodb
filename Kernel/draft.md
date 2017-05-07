@@ -1,35 +1,39 @@
-# The previous draft is actually an object-oriented database, not a graph database, so I am going to redesign it.
-#
-# Concepts:
-# 	Collection, Index, View (List, Tree, Partial Ordering, Graph), Collection Variable
-# 	Struct, Entity, Query, Cached Query, Function, Function Closure
-# 	View Operation (Create Subtree, Subgraph Matching, Path Searching, Strong Connected Components, etc)
-# 	Pattern Matching, Multiple Dispatching
-
-################################################
 # TYPE
 
-bool, int, float, string, object
+### PRIMITIVE-TYPE
+- `bool`
+- `u?int(8|16|32|64)?`
+- `float(32|64)?`
+- `string`
+- `object`
 
-enum Season = Spring | Summer | Autumn | Winter;
+### COMPLEX-TYPE
+- `{Spring | Summer | Autumn | Winter}`
+- `{x : int, y : int, z : int, point2d : view(x, u : y)}`
 
-struct Point
-(
-	x : int,
-	y : int
-);
+### MISC
+- `VALUE-TYPE:`: PRIMITIVE-TYPE, COMPLEX-TYPE
+- `VALUE-TYPE?`: nullable
+- `VALUE-TYPE&`: instance, treat like an object
+- `VALUE-TYPE*`: nullable instance
 
-query ( ... ) # { a, b, c }, data name, query closure
+### TYPE-DECLARATION:
+- `type NAME = TYPE;`
+- `newtype NAME = TYPE;`
 
 ################################################
 # COLLECTION AND INDEX
 
-data AttendExam(s : Student, e : Exam, score : int)
- index	Hash(s),
-		Hash(e),
-		Unique(e, s), # Hash(e, s), hash index is always default
-		Partition(e) Ordered(score) # Ordered(e, score) is illegal because Exam is not sortable
-		;
+data AttendExam({s : Student, t : Teacher, e : Exam, score : int})
+index {
+	Hash(s),
+	Hash(e),
+	Unique(e, s)
+	Partition(e) {
+		Ordered(score),
+		Unique(t)
+	}
+};
 
 ################################################
 # ENTITY, INDEX AND VIEW
