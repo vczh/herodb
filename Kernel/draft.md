@@ -1,3 +1,15 @@
+# KEYWORDS
+- bool
+- `u?int(8|16|32|64)?`
+- `float(32|64)?`
+- `string`
+- `object`
+- `view`
+- `mixin`
+- `type`
+- `newtype`
+- `data`
+
 # TYPE
 
 ### PRIMITIVE-TYPE
@@ -16,16 +28,12 @@
 - `VALUE-TYPE?`: nullable
 - `VALUE-TYPE&`: instance, treat like an object
 - `VALUE-TYPE*`: nullable instance
+- operators:
+	- `x^` : dereference, fail if null
 
-### TYPE-DECLARATION:
-- `type NAME = TYPE;`
-- `newtype NAME = TYPE;`
-
-################################################
-# COLLECTION AND INDEX
-
-data AttendExam({s : Student, t : Teacher, e : Exam, score : int})
-index {
+### DATA-COLLECTION:
+```
+data ({s : Student, t : Teacher, e : Exam, score : int}) {
 	Hash(s),
 	Hash(e),
 	Unique(e, s)
@@ -33,10 +41,33 @@ index {
 		Ordered(score),
 		Unique(t)
 	}
+}
+```
+
+### TYPE-DECLARATION:
+- `type NAME = TYPE;`
+- `newtype NAME = TYPE;`
+
+# COLLECTION AND INDEX / CONSTRAINT
+
+```
+newtype Person = {
+	name : string,
+	id : string
 };
 
-################################################
-# ENTITY, INDEX AND VIEW
+newtype School = {
+	students : data(Student&) {
+		NotNull(data),
+		Unique(data)
+	}
+};
+
+newtype Student = {
+	person : mixin(Person),
+	school : School&
+};
+```
 
 entity Person
 (
