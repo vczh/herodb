@@ -1,3 +1,5 @@
+This is a draft.
+
 # TYPE KEYWORDS
 - bool
 - `u?int(8|16|32|64)?`
@@ -115,15 +117,17 @@ data Relation(parent : Person, child : Person) index {
 
 ### Simple Query
 ```
-query GrandParents(grandParent : Person, grandChild : Person) :-
-	Relation(grandParent, parent),
+query GrandParents(grandParent : Person, grandChild : Person) {
+	Relation(grandParent, parent);
 	Relation(parent, grandSon);
+}
 ```
 
 ### Output only argument
 ```
-query Square(x : int, out x2 : int) :-
+query Square(x : int, out x2 : int) {
 	x2 <- x * x;
+}
 // out keyword is required
 ```
 
@@ -133,14 +137,41 @@ query GrandParents(grandParent : Person, grandChild : Person) index {
 	Partition(grandParent)
 }:-
 	Relation(grandParent, parent),
-	Relation(parent, grandSon);
+	Relation(parent, grandSon)
+	;
 
 // When submit a query, the index for caching is used to see if it is calculated
 // If not, insert an index with the "calculating" status
 // Adding an existing calculating index will cause an error (stop), which is not a failure (fail to pass a filter)
 ```
 
-### Aggregation
+### order_by, order_by_desc
+```
+data Exams(student : string, score : int) index {
+	Unique(student)
+}
+
+query Top10(out student : string, out score : int) {
+	Exams(student, score);
+	index <- order_by_desc(score);
+	index < 10;
+}
+```
+
+### partition
+```
+data Exams(student : string, score : int);
+
+query Top3ScorePerStudent(student : string, out score : int, out index : int) {
+	Exams(student, score);
+	partition(student) {
+		index <- order_by_desc(score);
+		index < 3;
+	}
+}
+```
+
+### aggregation
 
 ################################################
 # VIEW AND VIEW OPERATION
