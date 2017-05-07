@@ -175,10 +175,8 @@ query Top3ScorePerStudent(student : string, out score : int, out order : int)
 :- {
 	Exams(student, score);
 	partition(student)
-	:- {
-		order_by_desc(score)->order?
+		:- order_by_desc(score)->order?
 			:- order < 3;
-	}
 }
 ```
 
