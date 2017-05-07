@@ -3,11 +3,12 @@
 - `u?int(8|16|32|64)?`
 - `float(32|64)?`
 - `string`
-- `object`
 
 # DEFINITION KEYWORDS
 - `type`
-- `newtype`
+- `struct`
+- `object`
+- `enum`
 - `data`
 - `index`
 
@@ -20,10 +21,6 @@
 - `string`
 - `object`
 
-### COMPLEX-TYPE
-- `{Spring | Summer | Autumn | Winter}`
-- `{x : int, y : int, z : int}`
-
 ### MISC
 - `VALUE-TYPE:`: PRIMITIVE-TYPE, COMPLEX-TYPE
 - `VALUE-TYPE?`: nullable
@@ -33,6 +30,8 @@
 
 ### TYPE-DECLARATION:
 - `type NAME = TYPE;`
+- `enum Seasons {Spring | Summer | Autumn | Winter}
+- `struct Point {x : int, y : int}`
 - `object NAME [: BASE-TYPE] STRUCT-TYPE;`
 
 ### DATA-COLLECTION:
