@@ -1,7 +1,7 @@
 This is a draft.
 
 # TYPE KEYWORDS
-- bool
+- `bool`
 - `u?int(8|16|32|64)?`
 - `float(32|64)?`
 - `string`
