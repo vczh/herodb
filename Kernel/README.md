@@ -140,7 +140,7 @@ query Square(x : int, out x2 : int)
 ### Cached Query
 ```
 query GrandParents(grandParent : Person, grandChild : Person) index {
-	Partition(grandParent);
+	Hash(grandParent);
 }
 {
 	Relation(grandParent, parent);
