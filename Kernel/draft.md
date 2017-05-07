@@ -23,15 +23,17 @@
 ### COMPLEX-TYPE
 - `{Spring | Summer | Autumn | Winter}`
 - `{x : int, y : int, z : int}`
-- `object [: BASE-TYPE, ...] STRUCT-TYPE`
 
 ### MISC
 - `VALUE-TYPE:`: PRIMITIVE-TYPE, COMPLEX-TYPE
 - `VALUE-TYPE?`: nullable
-- `STRUCT-TYPE&`: instance, treat like an object
-- `STRUCT-TYPE*`: nullable instance
+
 - operators:
 	- `x^` : dereference, fail if null
+
+### TYPE-DECLARATION:
+- `type NAME = TYPE;`
+- `object NAME [: BASE-TYPE] STRUCT-TYPE;`
 
 ### DATA-COLLECTION:
 ```
@@ -53,33 +55,33 @@ data AttendExams = ({
 
 ### OBJECT-COLLECTION:
 ```
-newtype Person = object {
+object Person {
 	name : string,
 	id : string
 };
-data People = (default Person&) index {
+data People = (default Person) index {
 	Hash(name),
 	Unique(data.id)
 };
-// data Xs = (default X&) means every instance X will be automatically records in Xs
+// data Xs = (default X) means every instance X will  automatically appears in Xs
 // every object should have exactly one default data collection
 
-newtype Student = object : Person {
+object Student : Person {
 };
-data Students = (default Student&) index {
+data Students = (default Student) index {
 	People(data)
 };
 
-newtype School = object {
+object School {
 	name : string,
 };
-data Schools = (default School&) index {
+data Schools = (default School) index {
 	Unique(name)
 };
 
 data AttendSchool = ({
-	student : Student&,
-	school : School&
+	student : Student,
+	school : School
 }) index {
 	Require(Students(student), Schools(school))
 	Partition(student) {
@@ -87,10 +89,6 @@ data AttendSchool = ({
 	}
 }
 ```
-
-### TYPE-DECLARATION:
-- `type NAME = TYPE;`
-- `newtype NAME = TYPE;`
 
 ################################################
 # QUERY, CACHED QUERY AND AGGREGATION
