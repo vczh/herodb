@@ -92,7 +92,6 @@ data AttendSchool (
 	student : Student,
 	school : School
 ) index {
-	Require(Students(student), Schools(school));
 	partition(student) {
 		Unique(school);
 	}
