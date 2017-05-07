@@ -119,26 +119,23 @@ data Relation(parent : Person, child : Person) index
 
 ### Simple Query
 ```
-query Parents(parent : Person, child : Child) :-
-	Father(parent, child)
-	|
-	Mother(parent, child)
-	;
+query Parents(parent : Person, child : Child)
+	:- Father(parent, child);
+	:- Mother(parent, child);
 
-query GrandParents(grandParent : Person, grandChild : Person):-
-	query(parent) :-
-		Father(parent, child)
-		|
-		Mother(parent, child)
-		;
-	,
+query GrandParents(grandParent : Person, grandChild : Person)
+:- {
+	query(parent)
+		:- Father(parent, child);
+		:- Mother(parent, child);
 	Parents(grandParent, parent);
+}
 ```
 
 ### Output only argument
 ```
-query Square(x : int, out x2 : int) :-
-	x2 <- x * x;
+query Square(x : int, out x2 : int)
+	:- x2 <- x * x;
 // <- define the execution direction, it cannot run backward from x2 to x
 // out keyword is required
 ```
@@ -147,9 +144,10 @@ query Square(x : int, out x2 : int) :-
 ```
 query GrandParents(grandParent : Person, grandChild : Person) index
 	Hash(grandParent)
-	:-
-	Parents(grandParent, parent),
-	Parents(parent, grandSon);
+:- {
+	Parents(grandParent, parent);
+	Parents(parent, grandChild);
+}
 
 // When submit a query, the index for caching is used to see if it is calculated
 // If not, insert an index with the "calculating" status
@@ -161,25 +159,27 @@ query GrandParents(grandParent : Person, grandChild : Person) index
 data Exams(student : string, score : int) index
 	Unique(student);
 
-query Top10(out student : string, out score : int) :-
-	Exams(student, score),
-	order_by_desc(score)->order? :-
-		order < 10;
-	;
+query Top10(out student : string, out score : int)
+:- {
+	Exams(student, score);
+	order_by_desc(score)->order?
+		:- order < 10;
+}
 ```
 
 ### partition
 ```
 data Exams(student : string, score : int);
 
-query Top3ScorePerStudent(student : string, out score : int, out order : int) :-
-	Exams(student, score),
-	partition(student) :-
-		order_by_desc(score)->order? :-
-			order < 3
-			;
-		;
-	;
+query Top3ScorePerStudent(student : string, out score : int, out order : int)
+:- {
+	Exams(student, score);
+	partition(student)
+	:- {
+		order_by_desc(score)->order?
+			:- order < 3;
+	}
+}
 ```
 
 ### aggregation
@@ -188,27 +188,26 @@ data Exams(student : string, score : int);
 
 query AverageTop3ScorePerStudent(student : string, out average : int) index
 	Unique(student) // should match the code, will verify
-	:-
-	Exams(student, score?), // bind result and create a new name: score
-	partition(student) :-
-		order_by_desc(score)->order? :-
-			order < 3
-			;
-		,
-		aggregate :-
-			average <- sum(score) / count(score);
-			// if some of the arguments are aggregated
-			// then the aggregated values will be duplicated
-			// for example, if score is an argument, than the result looks like
-			// (student, score, average)
-			// (a, 10, 11)
-			// (a, 12, 11)
-			// (b, 10, 10)
-			// but obviously it doesn't match the index Unique(student), which will lead to a compiling error
-			// in this case, the correct index will be
-			// partition(student) { Unique(average); } Unique(student, average);
-		;
-	;
+:- {
+	Exams(student, score?); // bind result and create a new name: score
+	partition(student)
+	:- {
+		order_by_desc(score)->order?
+			:- order < 3 ;
+		aggregate
+			:- average <- sum(score) / count(score);
+		// if some of the arguments are aggregated
+		// then the aggregated values will be duplicated
+		// for example, if score is an argument, than the result looks like
+		// (student, score, average)
+		// (a, 10, 11)
+		// (a, 12, 11)
+		// (b, 10, 10)
+		// but obviously it doesn't match the index Unique(student), which will lead to a compiling error
+		// in this case, the correct index will be
+		// partition(student) { Unique(average); } Unique(student, average);
+	}
+}
 ```
 
 # UPDATE
