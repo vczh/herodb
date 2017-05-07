@@ -12,6 +12,10 @@
 - `data`
 - `index`
 
+# QUERY KEYWORDS
+- `query`
+- `out`
+
 # TYPE
 
 ### PRIMITIVE-TYPE
@@ -116,6 +120,13 @@ query GrandParents(grandParent : Person, grandChild : Person) :-
 	Relation(parent, grandSon);
 ```
 
+### Output only argument
+```
+query Square(x : int, out x2 : int) :-
+	x2 <- x * x;
+// out keyword is required
+```
+
 ### Cached Query
 ```
 query GrandParents(grandParent : Person, grandChild : Person) index {
@@ -129,74 +140,7 @@ query GrandParents(grandParent : Person, grandChild : Person) index {
 // Adding an existing calculating index will cause an error (stop), which is not a failure (fail to pass a filter)
 ```
 
-# ordering
-query ExamTop3(s : Student, e : Exam, score : int) :-
-	select (s, e, score)
-	from AttendExam(s, e, score)
-	order_by_desc score
-	fetch 0..2;
-
-# group by
-query ExamAttendCount(e: Exam, out count : int) :-
-	select (e)
-	from AttendExam(_, e, _)
-	group_by e (count = Count(e));
-
-# partition
-query AllExamTop3(s : Student, e : Exam, score : int) :-
-	select (s, e, score)
-	from AttendExam(s, e, score)
-	partition_by e
-	(
-		order_by_desc score
-		fetch 0..2
-	);
-
-# inner join
-query ClassExams(c : Class, e : Exam) :-
-	AttendExam(out s, e, _),
-	AttendClass(out c, s);
-
-# union
-# intersect
-
-################################################
-# FUNCTION
-
-func add(in a : int, in b : int, out c : int) :-
-	c = a + b;
-
-func sqrt(in a : float, out b : float) :-
-	sqrt_internal(a, out c),
-	expand b = {c, -c};
-
-# all arguments in a function should be "in" or "out"
-# function will not be inlined
-# function can contains collection operating statements (see exceptions)
-
-if <expression> then <expression> else <expression>
-try <expression>
-exists <expression>
-not <expression>
-<expression> (and | or) <expression>
-for <query> <expression>
-
-################################################
-# CONDITION AND EXCEPTION
-
-# the following expressions always returns true
-# if the operation failed, it throws an exception
-# use "try <expression>" to turn exception to false
-set Data(value1, value2, ...)
-update Data(value1, value2, ...) :-
-	(
-		value1 < 10,
-		value2 = 20
-	)
-remove Data(value1, value2, ...) :- condition
-remove Data # remove all
-
-# exception is not cachable, it directly turns the transaction to failure	
+### Aggregation
 
 ################################################
 # VIEW AND VIEW OPERATION
@@ -255,44 +199,4 @@ func TheSame(a : Square, b : Square, out result) :-
 func TheSame(a : Triangle, b : Triangle, out result) :-
 	result = true;
 
-################################################
-# NAMESPACE, MODULE AND DATABASE
 
-# declare a database and make dependencies
-# a database can be implemented in different files
-# but one file can only implement one database
-# database is not a namespace
-# a file can use the namespace from the same database, or from what is imported
-database <name>;
-using database <name>;
-
-# module contains several databases
-# an instance of a module will creates instances for each database
-
-using namespace a.b;
-
-namespace a
-{
-	namespace b
-	{
-		struct Point
-		(
-			x : int,
-			y : int
-		);
-	}
-
-	namespace c
-	{
-		struct Vector
-		(
-			x : int,
-			y : int
-		);
-	}
-
-	data Something(a : Point, b : c.Vector);
-}
-
-################################################
-# SCHEMA AND SYSTEM COLLECTION
