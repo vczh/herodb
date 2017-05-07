@@ -102,36 +102,32 @@ object Person {
 	gender : Gender
 }
 
-data PersonRelationship(parent : Person, child : Person) index {
+data Relation(parent : Person, child : Person) index {
 	Partition(child) {
 		Unique(Person)
 	}
 }
 ```
-enum Gender = Male | Female;
 
-entity Person
-(
-	name		: string,
-	gender		: Gender,
-	parents		: data(Person),
-	children	: data(Person)
-) index	Ordered(name)
-		;
+### Simple Query
+```
+query GrandParents(grandParent : Person, grandChild : Person) :-
+	Relation(grandParent, parent),
+	Relation(parent, grandSon);
+```
 
-entity index n..n Person.parents * Person.children;
+### Cached Query
+```
+query GrandParents(grandParent : Person, grandChild : Person) index {
+	Partition(grandParent)
+}:-
+	Relation(grandParent, parent),
+	Relation(parent, grandSon);
 
-# query
-# query cannot call functions which contains modification expressions
-query GrandParents(person : Person, grandParent : Person) :-
-	person.parents(out parent),
-	parent.parents(out grandParent);
-
-# cached query
-query GP_Cached(person : Person, grandParent : Person) :-
-	GrandParents(person, out grandParent)
- index	Cached(person)	# Cached likes primary key index, one query can has only one Cached index
-		;				# Cached(person) creates Hash(person) if not other index on (person) is used
+// When submit a query, the index for caching is used to see if it is calculated
+// If not, insert an index with the "calculating" status
+// Adding an existing calculating index will cause an error (stop), which is not a failure (fail to pass a filter)
+```
 
 # ordering
 query ExamTop3(s : Student, e : Exam, score : int) :-
