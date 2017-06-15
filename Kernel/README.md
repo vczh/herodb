@@ -1,5 +1,17 @@
 This is a draft.
 
+# HIGH-LEVEL FEATURES
+- Memory DB
+- Functional Programming
+- Auto Backup to file group ring (maintain diff bitmaps for all file groups)
+- Data Package
+	- Package includes schema, data, procedures
+	- Strong typed package non-circle dependency (package can access depended packages)
+	- Multiple instances of one data package
+	- Objects are allocated and stored inside one package, an object cannot be stored in a package that did not create it
+	- Object can be deleted, but the handle is never reused
+	- A data package can be deleted as a whole operation, which require all other packages that depend on it are deleted
+
 # TYPE KEYWORDS
 - `bool`
 - `u?int(8|16|32|64)?`
@@ -11,7 +23,6 @@ This is a draft.
 - `struct`
 - `object`
 - `enum`
-- `data`
 - `index`
 
 # QUERY KEYWORDS
@@ -42,24 +53,28 @@ This is a draft.
 - `type NAME = TYPE;`
 - `enum Seasons {Spring, Summer, Autumn, Winter}`
 - `struct Point {x : int, y : int}`
-- `object NAME [: BASE-TYPE] STRUCT-TYPE`
+- `object Point [: BASE-TYPE, ...] {x : int = 0, y : int}`
 
 ### DATA-COLLECTION:
 ```
-data AttendExams(
-	s : Student,
-	t : Teacher,
-	e : Exam,
-	score : int
-) index
-	Hash(s),
-	Hash(e),
-	Unique(e, s),
+struct AttendExams{
+	s : Student;
+	t : Teacher;
+	e : Exam;
+	score : int;
+}
+
+index AttendExams {
+	Hash(s);
+	Hash(e);
+	Unique(e, s);
 	partition(e) {
-		Ordered(score),
-		Unique(t)
+		Ordered(score);
+		Unique(t);
 	}
-;
+}
+
+// AttendExams becomes a data collection
 ```
 
 ### OBJECT-COLLECTION:
@@ -68,28 +83,36 @@ object Person {
 	name : string,
 	id : string
 }
-data People(default p : Person) index
-	Hash(name),
-	Unique(data.id);
-// data Xs(default x : X) means every instance X will automatically appear in Xs
-// every object should have exactly one default data collection
+
+index Person {
+	Hash(name);
+	Unique(id);
+}
+
+// Object collection traces all created object, you don't need to explicitly put an object into a object collection.
+// The index needs to be updated if the field is changed.
+// You are required to assign values to all fields when creating it, if there is no default value.
+// The object name becomes a data collection with one argument
 
 object Student : Person {
 }
-data Students(default s : Student) index
-	People(data);
 
 object School {
-	name : string,
+	name : string;
 }
-data Schools(default s : School) index
-	Unique(name);
 
-data AttendSchool (
+index School {
+	Unique(name);
+}
+
+struct AttendSchool {
 	student : Student,
 	school : School
-) index
+}
+
+index AttendSchool {
 	Unique(student);
+}
 ```
 
 # QUERY
@@ -105,16 +128,20 @@ object Person {
 	gender : Gender
 }
 
-data Father(father : Person, child : Person) index
-	Unique(child);
+struct Father{father : Person; child : Person;}
+index Father{Unique(child);}
 
-data Mother(father : Person, child : Person) index
+struct Mother{father : Person; child : Person;}
+index Mother {
 	Unique(child);
+}
 
-data Relation(parent : Person, child : Person) index
+struct Relation{parent : Person; child : Person;}
+index Relation {
 	partition(child) {
 		Unique(Person);
-	};
+	}
+}
 ```
 
 ### Simple Query
@@ -156,8 +183,10 @@ query GrandParents(grandParent : Person, grandChild : Person) index
 
 ### order_by, order_by_desc
 ```
-data Exams(student : string, score : int) index
+struct Exams{student : string; score : int;}
+index Exams {
 	Unique(student);
+}
 
 query Top10(out student : string, out score : int)
 :- {
@@ -169,7 +198,9 @@ query Top10(out student : string, out score : int)
 
 ### partition
 ```
-data Exams(student : string, score : int);
+struct Exams{student : string; score : int;}
+index Exams {
+}
 
 query Top3ScorePerStudent(student : string, out score : int, out order : int)
 :- {
@@ -182,7 +213,9 @@ query Top3ScorePerStudent(student : string, out score : int, out order : int)
 
 ### aggregation
 ```
-data Exams(student : string, score : int);
+struct Exams{student : string; score : int;}
+index Exams {
+}
 
 query AverageTop3ScorePerStudent(student : string, out average : int) index
 	Unique(student) // should match the code, will verify
