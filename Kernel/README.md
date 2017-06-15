@@ -169,11 +169,14 @@ query Square(x : int, out x2 : int)
 
 ### Cached Query
 ```
-query GrandParents(grandParent : Person, grandChild : Person) index
-	Hash(grandParent)
+query GrandParents(grandParent : Person, grandChild : Person)
 :- {
 	Parents(grandParent, parent);
 	Parents(parent, grandChild);
+}
+
+index GrandParents {
+	Hash(grandParent)
 }
 
 // When submit a query, the index for caching is used to see if it is calculated
@@ -217,8 +220,11 @@ struct Exams{student : string; score : int;}
 index Exams {
 }
 
-query AverageTop3ScorePerStudent(student : string, out average : int) index
-	Unique(student) // should match the code, will verify
+// the order is not important
+index AverageTop3ScorePerStudent {
+	Unique(student);
+}
+query AverageTop3ScorePerStudent(student : string, out average : int)
 :- {
 	Exams(student, score?); // bind result and create a new name: score
 	partition(student)
@@ -226,19 +232,12 @@ query AverageTop3ScorePerStudent(student : string, out average : int) index
 		order_by_desc(score)->order?
 			:- order < 3 ;
 		aggregate
-			:- average <- sum(score) / count(score);
-		// if some of the arguments are aggregated
-		// then the aggregated values will be duplicated
-		// for example, if score is an argument, than the result looks like
-		// (student, score, average)
-		// (a, 10, 11)
-		// (a, 12, 11)
-		// (b, 10, 10)
-		// but obviously it doesn't match the index Unique(student), which will lead to a compiling error
-		// in this case, the correct index will be
-		// partition(student) { Unique(average); } Unique(student, average);
+			:- average <- average(score);
+		// aggregated value becomes inaccessable
+		// only partitioned keys and aggregation results are accessable
 	}
 }
+
 ```
 
 # UPDATE
@@ -249,4 +248,4 @@ query AverageTop3ScorePerStudent(student : string, out average : int) index
 
 # UPDATE (schema)
 
-# DATABASE
+# DATA PACKAGE
