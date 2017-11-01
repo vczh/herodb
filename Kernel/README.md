@@ -191,19 +191,55 @@ query AverageTop3ScorePerStudent(student: string) -> (average: int)
 	@partition(student),
 	order <- @order_by_desc(score),
 	order < 3,
-	@aggregate {
-		average <- average(score)
-	}
-	// aggregated value becomes inaccessable
-	// only partitioned keys and aggregation results are accessable
-
+	@aggregate(average(score)),
+	average <- score
 ```
 
 # UPDATE
 
+### INSERT
+```
+data Exams(student: string, score: int);
+
+procedure AddExam(student: string, score: int)
+:-	@insert Exams(student, score)
+;
+```
+
+### UPDATE
+```
+data Exams(student: string, score: int);
+
+procedure UpdateExam(student: string, score: int)
+:-	@update Exams(student, @score)
+;
+```
+
+### REMOVE
+```
+data Exams(student: string, score: int);
+
+procedure RemoveExam(student: string)
+:-	@remove Exams(student, _)
+;
+```
+
 # EXPRESSION (cannot run backward)
+- Unary and Binary operators
+- Name
+
+# STATEMENT
+- `QUERY`
+- `OUTPUT <- EXPRESSION | QUERY`
+- `[OUTPUT <- ]@COMMAND(EXPRESSION, ...)`
+  - Each command has different requirements on expressions and return values
+- `@COMMAND QUERY`
 
 # TRANSACTION and PROCEDURE
+```
+procedure QUERY-DEF
+transaction QUERY-DEF
+```
 
 # UPDATE (schema)
 
