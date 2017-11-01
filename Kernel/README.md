@@ -209,7 +209,7 @@ query AverageTop3ScorePerStudent(student: string) -> (average: int)
 ```
 data Exams(student: string, score: int).
 
-procedure AddExam(student: string, score: int)
+query AddExam(student: string, score: int)
 :-	@insert Exams(student, score)
 ;
 ```
@@ -218,7 +218,7 @@ procedure AddExam(student: string, score: int)
 ```
 data Exams(student: string, score: int).
 
-procedure UpdateExam(student: string, score: int)
+query UpdateExam(student: string, score: int)
 :-	@update Exams(student, @score)
 ;
 ```
@@ -227,7 +227,7 @@ procedure UpdateExam(student: string, score: int)
 ```
 data Exams(student: string, score: int).
 
-procedure RemoveExam(student: string)
+query RemoveExam(student: string)
 :-	@remove Exams(student, _)
 ;
 ```
@@ -247,10 +247,9 @@ procedure RemoveExam(student: string)
 - `Zero <- 0.`: Constants
 - `Students <- new StudentPackage.`: Package instance
 
-# TRANSACTION and PROCEDURE
+# TRANSACTION
 ```
-procedure QUERY-DEF
-transaction QUERY-DEF
+transaction query ...
 ```
 
 # DATA PACKAGE
