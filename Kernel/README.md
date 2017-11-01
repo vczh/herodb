@@ -2,7 +2,6 @@ This is a draft.
 
 # HIGH-LEVEL FEATURES
 - Memory DB
-- Functional Programming
 - External resource accessing
   - Auto Backup to file group ring (maintain diff bitmaps for all file groups)
   - Generate the whole data base to C++
@@ -13,6 +12,13 @@ This is a draft.
 	- Objects are allocated and stored inside one package, an object cannot be stored in a package that did not create it
 	- Object can be deleted, but the handle is never reused
 	- A data package can be deleted as a whole operation, which require all other packages that depend on it are deleted
+	
+# KEYWORDS
+- PRIMITIVE-TYPE
+- `enum`, `struct`, `class`
+- `true`, `false`, `null`, `new`, `delete`
+- `type`, `data`, `query`, `procedure`, `transaction`, `index`
+- `package`, `using`, `public`,
 
 # TYPE
 
@@ -75,20 +81,22 @@ enum Gender {
 	Female
 }
 
-object Person {
+class Person {
 	name : string,
 	gender : Gender
 }
 
-data Father(father: Person, child: Person);
-index Father{Unique(child);}
+data Father(father: Person, child: Person).
+index Father {
+	Unique(child);
+}
 
-data Mother(father: Person, child: Person);
+data Mother(father: Person, child: Person).
 index Mother {
 	Unique(child);
 }
 
-data Relation(parent: Person, child: Person);
+data Relation(parent: Person, child: Person).
 index Relation {
 	partition(child) {
 		Unique(Person);
@@ -153,7 +161,7 @@ index GrandParents {
 
 ### order_by, order_by_desc
 ```
-data Exams(student: string, score: int);
+data Exams(student: string, score: int).
 index Exams {
 	Unique(student);
 }
@@ -167,7 +175,7 @@ query Top10() -> (student: string, score: int)
 
 ### partition
 ```
-data Exams(student: string, score: int);
+data Exams(student: string, score: int).
 
 query Top3ScorePerStudent(student: string) -> (score: int, order: int)
 :-	Exams(student, score),
@@ -179,7 +187,7 @@ query Top3ScorePerStudent(student: string) -> (score: int, order: int)
 
 ### aggregation
 ```
-data Exams(student: string, score: int);
+data Exams(student: string, score: int).
 
 // the order is not important
 index AverageTop3ScorePerStudent {
@@ -199,7 +207,7 @@ query AverageTop3ScorePerStudent(student: string) -> (average: int)
 
 ### INSERT
 ```
-data Exams(student: string, score: int);
+data Exams(student: string, score: int).
 
 procedure AddExam(student: string, score: int)
 :-	@insert Exams(student, score)
@@ -208,7 +216,7 @@ procedure AddExam(student: string, score: int)
 
 ### UPDATE
 ```
-data Exams(student: string, score: int);
+data Exams(student: string, score: int).
 
 procedure UpdateExam(student: string, score: int)
 :-	@update Exams(student, @score)
@@ -217,7 +225,7 @@ procedure UpdateExam(student: string, score: int)
 
 ### REMOVE
 ```
-data Exams(student: string, score: int);
+data Exams(student: string, score: int).
 
 procedure RemoveExam(student: string)
 :-	@remove Exams(student, _)
@@ -235,12 +243,44 @@ procedure RemoveExam(student: string)
   - Each command has different requirements on expressions and return values
 - `@COMMAND QUERY`
 
+# GLOBAL READONLY VALUE
+- `Zero <- 0.`: Constants
+- `Students <- new StudentPackage.`: Package instance
+
 # TRANSACTION and PROCEDURE
 ```
 procedure QUERY-DEF
 transaction QUERY-DEF
 ```
 
-# UPDATE (schema)
-
 # DATA PACKAGE
+
+### DECLARATION
+```
+package NAME using P1, P2, P3 ...;
+
+DECLARATIONS
+public QUERY | TRANSACTION
+```
+
+### USING DATA PACKAGE
+```
+```
+- A keyword refer to the current data package
+- Instantiate a independent data package
+- Discard a data package instance
+- Instantiate a data package inheriting from another one
+- Merge a inheriting data package to its parent
+
+# ADMINISTRATION OPERATIONS
+
+### INSTANTIATE A DATA PACKAGE
+- Through protocol
+
+### UPDATE SCHEMA
+- Consider about:
+  - Upload a new data package definition with data moving moving procedures
+
+# SAMPLE (SCORE MANAGEMENT)
+
+# SAMPLE (SYNTAX TREE)
