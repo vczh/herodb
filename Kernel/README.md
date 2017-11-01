@@ -98,26 +98,38 @@ index Relation {
 
 ### Simple Query
 ```
-query Parents(parent : Person, child : Child)
-	:- Father(parent, child);
-	:- Mother(parent, child);
+query Parents(parent: Person, child: Child)
+:-	Father(parent, child)
+;	Mother(parent, child)
+.
 
-query GrandParents(grandParent : Person, grandChild : Person)
-:- {
-	query(parent)
-		:- Father(parent, child);
-		:- Mother(parent, child);
-	Parents(grandParent, parent);
-}
+query GrandParents(grandParent: Person, grandChild: Person)
+:-	(parent)
+	:- Father(parent, child)
+	;  Mother(parent, child)
+	.,
+	Parents(grandParent, parent)
+.
 ```
 
 ### Output only argument
 ```
-query Square(x : int, out x2 : int)
-	:- x2 <- x * x;
-// <- define the execution direction, it cannot run backward from x2 to x
-// out keyword is required
+query Square(x: int) -> (x2: int)
+:-	x2 <- x * x
+.
+
+query Solve(a: double, b: double, c: double) -> (x1: double, x2: double)
+:-	delta <- b*b - 4*a*c,
+	delta > 0,
+	x1 <- (-b + delta) / (2 * a),
+	x2 <- (-b - delta) / (2 * a)
+;
 ```
+- `<-` define the execution direction, it cannot run backward from x2 to x
+- only out arguments can be put in the left side of `<-`
+- Usage:
+  - `x2 <- Square(x)`
+  - `(x1, x2) <- Solve(a, b, c)`
 
 ### Cached Query
 ```
@@ -153,9 +165,7 @@ query Top10(out student : string, out score : int)
 
 ### partition
 ```
-struct Exams{student : string; score : int;}
-index Exams {
-}
+data Exams(student: string, score: int);
 
 query Top3ScorePerStudent(student : string, out score : int, out order : int)
 :- {
