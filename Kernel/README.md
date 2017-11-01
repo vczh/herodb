@@ -46,11 +46,11 @@ This is a draft.
 
 - Declaration:
 ```
-type AttendExam = {
-	s: Student;
-	t: Teacher;
-	e: Exam;
-	score: int;
+type AttendExam = struct {
+	s: Student,
+	t: Teacher,
+	e: Exam,
+	score: int
 }
 
 data AttendExams(AttendExam);
@@ -63,12 +63,12 @@ data AttendExams(s: Student, t: Teacher, e: Exam, score: int);
 - Index:
 ```
 index AttendExams {
-	Hash(s);
-	Hash(e);
-	Unique(e, s);
+	Hash(s),
+	Hash(e),
+	Unique(e, s),
 	partition(e) {
-		Ordered(score);
-		Unique(t);
+		Ordered(score),
+		Unique(t)
 	}
 }
 ```
@@ -88,18 +88,18 @@ class Person {
 
 data Father(father: Person, child: Person).
 index Father {
-	Unique(child);
+	Unique(child)
 }
 
 data Mother(father: Person, child: Person).
 index Mother {
-	Unique(child);
+	Unique(child)
 }
 
 data Relation(parent: Person, child: Person).
 index Relation {
 	partition(child) {
-		Unique(Person);
+		Unique(Person)
 	}
 }
 ```
@@ -131,7 +131,7 @@ query Solve(a: double, b: double, c: double) -> (x1: double, x2: double)
 	delta > 0,
 	x1 <- (-b + delta) / (2 * a),
 	x2 <- (-b - delta) / (2 * a)
-;
+.
 ```
 - `<-` define the execution direction, it cannot run backward from x2 to x
 - only out arguments can be put in the left side of `<-`
@@ -142,8 +142,8 @@ query Solve(a: double, b: double, c: double) -> (x1: double, x2: double)
 ### Cached Query
 ```
 query GrandParents(grandParent: Person, grandChild: Person)
-:-	Parents(grandParent, parent)
-;	Parents(parent, grandChild)
+:-	Parents(grandParent, parent),
+	Parents(parent, grandChild)
 .
 
 index GrandParents {
@@ -170,7 +170,7 @@ query Top10() -> (student: string, score: int)
 :-	Exams(student, score),
 	order <- @order_by_desc(score),
 	order < 10
-;
+.
 ```
 
 ### partition
@@ -182,7 +182,7 @@ query Top3ScorePerStudent(student: string) -> (score: int, order: int)
 	@partition(student),
 	order <- @order_by_desc(score),
 	order < 3
-;
+.
 ```
 
 ### aggregation
@@ -201,6 +201,7 @@ query AverageTop3ScorePerStudent(student: string) -> (average: int)
 	order < 3,
 	@aggregate(average(score)),
 	average <- score
+.
 ```
 
 # UPDATE
@@ -211,7 +212,7 @@ data Exams(student: string, score: int).
 
 query AddExam(student: string, score: int)
 :-	@insert Exams(student, score)
-;
+.
 ```
 
 ### UPDATE
@@ -220,7 +221,7 @@ data Exams(student: string, score: int).
 
 query UpdateExam(student: string, score: int)
 :-	@update Exams(student, @score)
-;
+.
 ```
 
 ### REMOVE
@@ -229,7 +230,7 @@ data Exams(student: string, score: int).
 
 query RemoveExam(student: string)
 :-	@remove Exams(student, _)
-;
+.
 ```
 
 # EXPRESSION (cannot run backward)
