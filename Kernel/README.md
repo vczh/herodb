@@ -133,72 +133,69 @@ query Solve(a: double, b: double, c: double) -> (x1: double, x2: double)
 
 ### Cached Query
 ```
-query GrandParents(grandParent : Person, grandChild : Person)
-:- {
-	Parents(grandParent, parent);
-	Parents(parent, grandChild);
-}
+query GrandParents(grandParent: Person, grandChild: Person)
+:-	Parents(grandParent, parent)
+;	Parents(parent, grandChild)
+.
 
 index GrandParents {
 	Hash(grandParent)
 }
-
-// When submit a query, the index for caching is used to see if it is calculated
-// If not, insert an index with the "calculating" status
-// Adding an existing calculating index will cause an error (stop), which is not a failure (fail to pass a filter)
 ```
+- When submit a query, the index for caching is used to see if the result has been calculated
+  - Consider about:
+    - Multiple index
+    - Provided value covered by multiple index
+    - Provide value not covered by any index
+- If not, insert an index with the "calculating" status
+- Adding an existing calculating index will cause an error (stop), which is not a failure (fail to pass a filter)
+  - e.g. query is recursive on the same index value
 
 ### order_by, order_by_desc
 ```
-struct Exams{student : string; score : int;}
+data Exams(student: string, score: int);
 index Exams {
 	Unique(student);
 }
 
-query Top10(out student : string, out score : int)
-:- {
-	Exams(student, score);
-	order_by_desc(score)->order?
-		:- order < 10;
-}
+query Top10() -> (student: string, score: int)
+:-	Exams(student, score),
+	order <- @order_by_desc(score),
+	order < 10
+;
 ```
 
 ### partition
 ```
 data Exams(student: string, score: int);
 
-query Top3ScorePerStudent(student : string, out score : int, out order : int)
-:- {
-	Exams(student, score);
-	partition(student)
-		:- order_by_desc(score)->order?
-			:- order < 3;
-}
+query Top3ScorePerStudent(student: string) -> (score: int, order: int)
+:-	Exams(student, score),
+	@partition(student),
+	order <- @order_by_desc(score),
+	order < 3
+;
 ```
 
 ### aggregation
 ```
-struct Exams{student : string; score : int;}
-index Exams {
-}
+data Exams(student: string, score: int);
 
 // the order is not important
 index AverageTop3ScorePerStudent {
 	Unique(student);
 }
-query AverageTop3ScorePerStudent(student : string, out average : int)
-:- {
-	Exams(student, score?); // bind result and create a new name: score
-	partition(student)
-	:- {
-		order_by_desc(score)->order?
-			:- order < 3 ;
-		aggregate
-			:- average <- average(score);
-		// aggregated value becomes inaccessable
-		// only partitioned keys and aggregation results are accessable
+
+query AverageTop3ScorePerStudent(student: string) -> (average: int)
+:-	Exams(student, score),
+	@partition(student),
+	order <- @order_by_desc(score),
+	order < 3,
+	@aggregate {
+		average <- average(score)
 	}
-}
+	// aggregated value becomes inaccessable
+	// only partitioned keys and aggregation results are accessable
 
 ```
 
