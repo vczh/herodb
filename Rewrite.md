@@ -11,8 +11,8 @@
     * Single-threaded apply transaction update (mean while updates can be queued parallelly)
         * Submit the transaction of highest cost, rollback all conflicted transactions
             * Could be optimized to pick lower cost transactions when the sum is higher to prevent from rolling-back too much cost
-    * Prepare for persisting updated pages
-    * Mark or remove the log
+        * Prepare for persisting updated pages
+        * Mark or remove the log
     * Need to consider about recovering when the database is shutdown at any timing
 * The database need to offline so that it can
     * Changes schema
