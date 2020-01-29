@@ -31,4 +31,8 @@ Paged file -> Basic SQL -> object oriented database / prolog query language
             * Inside schema table it stores entries of each table
             * Inside index table it stores entries of each index
             * All information will be loaded to memory after a database is online
+        * Transaction pages
+            * Unsubmitted pages by transaction
+            * Page version references data
+            * Lock data
     
